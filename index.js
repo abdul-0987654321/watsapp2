@@ -7,19 +7,19 @@ const path = require('path');
 
 // ─── CONFIG ─────────────────────────────────────────────
 const WHAPI_TOKEN = 'sRfxCOYrER4XYRFoVJ5boPNCZAo34v4A';
-const WHAPI_URL = 'https://gate.whapi.cloud/';
-const OWNER_NUMBER = process.env.OWNER_NUMBER || '923371240707';
+const WHAPI_URL = 'https://gate.whapi.cloud';
+const OWNER_NUMBER = '923371240707';
 const PORT = process.env.PORT || 3000;
 const ORDERS_FILE = path.join(__dirname, 'orders.json');
 
 // ─── MENU ───────────────────────────────────────────────
 const MENU = [
-  { id: '1', name: 'Chicken Roast (Full)', price: 1350, desc: 'Fresh' },
-  { id: '2', name: 'Chicken Roast (Half)', price: 700, desc: 'Fresh' },
-  { id: '3', name: 'Shami Kabab (12 Pcs)', price: 600, desc: 'Tasty' },
-  { id: '4', name: 'Chicken Piece', price: 180, desc: '' },
-  { id: '5', name: 'Salad', price: 20, desc: '' },
-  { id: '6', name: 'Raita', price: 20, desc: '' }
+  { id: '1', name: 'Chicken Roast (Full)', price: 1350 },
+  { id: '2', name: 'Chicken Roast (Half)', price: 700 },
+  { id: '3', name: 'Shami Kabab (12 Pcs)', price: 600 },
+  { id: '4', name: 'Chicken Piece', price: 180 },
+  { id: '5', name: 'Salad', price: 20 },
+  { id: '6', name: 'Raita', price: 20 }
 ];
 
 // ─── SESSION ────────────────────────────────────────────
@@ -57,24 +57,23 @@ const api = axios.create({
   }
 });
 
-// ─── SEND MESSAGE ──────────────────────────────────────
+// ─── SEND TEXT ──────────────────────────────────────────
 async function sendText(to, message) {
   try {
-    const response = await api.post('/messages/text', {
+    await api.post('/messages/text', {
       to: to,
       body: message
     });
-    console.log('✅ Message sent to:', to);
-    return response.data;
+    console.log('✅ Text sent');
   } catch (err) {
     console.error('❌ Send Text Error:', err.response?.data || err.message);
   }
 }
 
 // ─── SEND INTERACTIVE BUTTONS ──────────────────────────
-async function sendButtons(to, title, buttons) {
+async function sendInteractiveButtons(to, title, buttons) {
   try {
-    const response = await api.post('/messages/interactive', {
+    const payload = {
       to: to,
       type: 'button',
       body: {
@@ -89,42 +88,50 @@ async function sendButtons(to, title, buttons) {
           }
         }))
       }
-    });
-    console.log('✅ Buttons sent to:', to);
+    };
+    
+    console.log('📤 Sending buttons:', JSON.stringify(payload, null, 2));
+    
+    const response = await api.post('/messages/interactive', payload);
+    console.log('✅ Buttons sent');
     return response.data;
   } catch (err) {
-    console.error('❌ Send Buttons Error:', err.response?.data || err.message);
-    await sendText(to, `${title}\n\n${buttons.map((b, i) => `${i+1}. ${b}`).join('\n')}`);
+    console.error('❌ Buttons Error:', err.response?.data || err.message);
+    // Fallback
+    await sendText(to, `${title}\n${buttons.map((b, i) => `${i+1}. ${b}`).join('\n')}`);
   }
 }
 
-// ─── SEND LIST MESSAGE ──────────────────────────────────
-async function sendList(to, title, body, buttonText, items) {
+// ─── SEND INTERACTIVE LIST ─────────────────────────────
+async function sendInteractiveList(to, title, buttonText, items) {
   try {
-    const rows = items.map(item => ({
-      id: item.id,
-      title: item.name,
-      description: `Rs.${item.price} - ${item.desc || 'Available'}`
-    }));
-
-    const response = await api.post('/messages/interactive', {
+    const payload = {
       to: to,
       type: 'list',
       body: {
-        text: body || 'Select items from menu'
+        text: title
       },
       action: {
         button: buttonText || '📋 View Menu',
         sections: [{
           title: '🍽 Menu Items',
-          rows: rows
+          rows: items.map(item => ({
+            id: item.id,
+            title: item.name,
+            description: `Rs.${item.price}`
+          }))
         }]
       }
-    });
-    console.log('✅ List sent to:', to);
+    };
+    
+    console.log('📤 Sending list:', JSON.stringify(payload, null, 2));
+    
+    const response = await api.post('/messages/interactive', payload);
+    console.log('✅ List sent');
     return response.data;
   } catch (err) {
-    console.error('❌ Send List Error:', err.response?.data || err.message);
+    console.error('❌ List Error:', err.response?.data || err.message);
+    // Fallback
     await sendText(to, items.map(i => `${i.id}. ${i.name} - Rs.${i.price}`).join('\n'));
   }
 }
@@ -132,7 +139,7 @@ async function sendList(to, title, body, buttonText, items) {
 // ─── CART ───────────────────────────────────────────────
 function cartText(cart) {
   let total = 0;
-  let text = "🛒 CART:\n";
+  let text = "🛒 YOUR CART:\n";
   for (const i of cart) {
     const sub = i.qty * i.price;
     total += sub;
@@ -165,7 +172,7 @@ async function processOrder(from, session) {
   };
 
   await saveOrder(order);
-  await sendText(from, `🎉 Order Confirmed!\nID: ${order.id}\nTotal: Rs.${total}`);
+  await sendText(from, `✅ ORDER CONFIRMED!\nID: ${order.id}\nTotal: Rs.${total}`);
   await sendText(OWNER_NUMBER,
     `📦 NEW ORDER\n${order.id}\n${order.name}\n${order.phone}\n${order.address}\n\n${text}\nTotal: Rs.${total}`
   );
@@ -177,72 +184,84 @@ async function handleMessage(from, text) {
   const session = getSession(from);
   const msg = text.toLowerCase().trim();
 
-  console.log(`📩 Message from ${from}: ${text}`);
+  console.log(`📩 ${from}: ${text}`);
+  console.log(`🔄 Session step: ${session.step}`);
 
-  // Health check
-  if (msg === 'ping') {
-    return sendText(from, '🏓 pong');
-  }
-
-  // START / MENU
+  // START
   if (msg.match(/^(menu|start|hi|hello|order)$/)) {
     resetSession(from);
-    session.step = "browsing";
+    session.step = "main";
     
     await sendText(from, "👋 Welcome to Our Restaurant!");
-    await sendButtons(from, "What would you like to do?", ["📋 View Menu", "🛒 My Cart", "❓ Help"]);
-    await sendList(from, "🍽 Menu", "Please select items to order:", "📋 Open Menu", MENU);
+    await sendInteractiveButtons(from, 
+      "What would you like to do?", 
+      ["📋 View Menu", "🛒 My Cart", "❓ Help"]
+    );
     return;
   }
 
-  // BUTTON RESPONSES
-  if (msg.includes('view menu') || msg.includes('open menu')) {
-    session.step = "browsing";
-    await sendList(from, "🍽 Menu", "Select items:", "📋 Open Menu", MENU);
-    return;
-  }
-
-  if (msg.includes('my cart')) {
-    const { text: cartText } = cartText(session.cart);
-    if (session.cart.length === 0) {
-      await sendText(from, "🛒 Your cart is empty!");
-      await sendButtons(from, "What would you like to do?", ["📋 View Menu", "❓ Help"]);
-    } else {
-      await sendText(from, cartText);
-      await sendButtons(from, "Cart Actions:", ["🛒 Checkout", "📋 More Items", "❌ Cancel"]);
-    }
-    return;
-  }
-
+  // HELP
   if (msg.includes('help')) {
     await sendText(from, 
       "📖 Commands:\n" +
       "• menu - Show menu\n" +
       "• cart - View cart\n" +
       "• checkout - Place order\n" +
-      "• cancel - Cancel order\n" +
-      "• help - Show this help"
+      "• cancel - Cancel order"
     );
     return;
   }
 
-  // LIST SELECTION (Menu Items)
+  // VIEW MENU - Button response
+  if (msg.includes('view menu') || msg.includes('open menu')) {
+    session.step = "browsing";
+    await sendInteractiveList(from, 
+      "🍽 Select your item:", 
+      "📋 Open Menu", 
+      MENU
+    );
+    return;
+  }
+
+  // MY CART - Button response
+  if (msg.includes('my cart') || msg.includes('cart')) {
+    if (session.cart.length === 0) {
+      await sendText(from, "🛒 Your cart is empty!");
+      await sendInteractiveButtons(from, 
+        "What would you like?", 
+        ["📋 View Menu", "❓ Help"]
+      );
+    } else {
+      const { text: ctext } = cartText(session.cart);
+      await sendText(from, ctext);
+      await sendInteractiveButtons(from, 
+        "What next?", 
+        ["📋 Add More", "🛒 Checkout", "❌ Cancel"]
+      );
+    }
+    return;
+  }
+
+  // MENU ITEM SELECTION (List se click)
   if (session.step === "browsing") {
     const item = MENU.find(m => m.id === text.trim());
     if (item) {
       const ex = session.cart.find(c => c.id === item.id);
       if (ex) {
         ex.qty++;
-        await sendText(from, `✅ Added another ${item.name}! (${ex.qty}x)`);
+        await sendText(from, `✅ Another ${item.name} added! (${ex.qty}x)`);
       } else {
         session.cart.push({ ...item, qty: 1 });
-        await sendText(from, `✅ Added ${item.name} to cart!`);
+        await sendText(from, `✅ ${item.name} added to cart!`);
       }
       
       session.step = "cart";
       const { text: ctext } = cartText(session.cart);
       await sendText(from, ctext);
-      await sendButtons(from, "What next?", ["📋 More Items", "🛒 Checkout", "❌ Cancel"]);
+      await sendInteractiveButtons(from, 
+        "What next?", 
+        ["📋 More Items", "🛒 Checkout", "❌ Cancel"]
+      );
       return;
     }
   }
@@ -251,17 +270,24 @@ async function handleMessage(from, text) {
   if (session.step === "cart") {
     if (msg.includes("checkout")) {
       session.step = "name";
-      return sendText(from, "👤 Please enter your name:");
+      await sendText(from, "👤 Enter your name:");
+      return;
     }
     
-    if (msg.includes("more items")) {
+    if (msg.includes("more items") || msg.includes("add more")) {
       session.step = "browsing";
-      return sendList(from, "🍽 Menu", "Select more items:", "📋 Open Menu", MENU);
+      await sendInteractiveList(from, 
+        "🍽 Select more items:", 
+        "📋 Open Menu", 
+        MENU
+      );
+      return;
     }
     
     if (msg.includes("cancel")) {
       resetSession(from);
-      return sendText(from, "❌ Order cancelled. Type 'menu' to start again.");
+      await sendText(from, "❌ Order cancelled. Type 'menu' to start.");
+      return;
     }
   }
 
@@ -269,14 +295,16 @@ async function handleMessage(from, text) {
   if (session.step === "name") {
     session.name = text;
     session.step = "address";
-    return sendText(from, "📍 Please enter delivery address:");
+    await sendText(from, "📍 Enter delivery address:");
+    return;
   }
 
   // ADDRESS
   if (session.step === "address") {
     session.address = text;
     session.step = "phone";
-    return sendText(from, "📞 Please enter phone number:");
+    await sendText(from, "📞 Enter phone number:");
+    return;
   }
 
   // PHONE
@@ -286,19 +314,25 @@ async function handleMessage(from, text) {
     
     const { text: ctext, total } = cartText(session.cart);
     await sendText(from, `📋 ORDER SUMMARY\n\n${ctext}\nTotal: Rs.${total}`);
-    await sendButtons(from, "Confirm your order?", ["✅ Yes", "❌ No"]);
+    await sendInteractiveButtons(from, 
+      "Confirm order?", 
+      ["✅ Yes", "❌ No"]
+    );
     return;
   }
 
   // CONFIRM
   if (session.step === "confirm") {
     if (msg === "yes" || msg === "✅ yes") {
-      return processOrder(from, session);
+      await processOrder(from, session);
+      return;
     }
     resetSession(from);
-    return sendText(from, "❌ Order cancelled. Type 'menu' to start again.");
+    await sendText(from, "❌ Cancelled. Type 'menu' to start.");
+    return;
   }
 
+  // DEFAULT
   await sendText(from, "❓ Type 'menu' to start or 'help' for commands.");
 }
 
@@ -308,33 +342,26 @@ app.use(express.json());
 
 // Health Check
 app.get('/', (req, res) => {
-  res.json({
-    status: 'OK',
+  res.json({ 
+    status: 'OK', 
     name: 'WhatsApp Food Bot',
-    version: '1.0.0',
-    timestamp: new Date().toISOString()
+    version: '1.0.0'
   });
 });
 
 app.get('/health', (req, res) => {
-  res.json({
-    status: 'OK',
+  res.json({ 
+    status: 'OK', 
     sessions: sessions.size,
-    uptime: process.uptime(),
-    memory: process.memoryUsage(),
-    timestamp: new Date().toISOString()
+    uptime: process.uptime()
   });
 });
 
-// Webhook Verification
 app.get('/webhook', (req, res) => {
-  if (req.query.hub_challenge) {
-    return res.send(req.query.hub_challenge);
-  }
+  if (req.query.hub_challenge) return res.send(req.query.hub_challenge);
   res.sendStatus(200);
 });
 
-// Webhook Handler
 app.post('/webhook', async (req, res) => {
   res.sendStatus(200);
 
@@ -345,16 +372,19 @@ app.post('/webhook', async (req, res) => {
     let from = null;
     let text = null;
 
-    // Parse Whapi messages array
+    // Parse Whapi webhook format
     if (data.messages && Array.isArray(data.messages) && data.messages.length > 0) {
       const message = data.messages[0];
       
-      from = message.from || message.sender?.phone || message.chat_id?.split('@')[0];
+      // Get sender
+      from = message.from || message.chat_id?.split('@')[0];
       
+      // Get text from different formats
       if (message.text) {
         text = message.text.body || message.text;
       }
       
+      // Handle interactive responses (buttons/list clicks)
       if (message.interactive) {
         if (message.interactive.button_reply) {
           text = message.interactive.button_reply.title;
@@ -363,12 +393,13 @@ app.post('/webhook', async (req, res) => {
         }
       }
       
+      // Fallback
       if (!text) {
         text = message.body || message.text || '';
       }
     }
 
-    // Fallback
+    // Direct format fallback
     if (!from) {
       from = data.from || data.sender?.phone || data.chat_id?.split('@')[0];
     }
@@ -381,8 +412,6 @@ app.post('/webhook', async (req, res) => {
 
     if (from && text) {
       await handleMessage(from, text);
-    } else {
-      console.log('⚠️ No valid message to process');
     }
 
   } catch (err) {
@@ -390,9 +419,8 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
-// ─── START SERVER ───────────────────────────────────────
+// ─── START ──────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`🚀 Whapi Food Bot running on port ${PORT}`);
-  console.log(`📱 Webhook URL: https://watsapp2-production.up.railway.app/webhook`);
-  console.log(`💚 Health Check: https://watsapp2-production.up.railway.app/health`);
+  console.log(`🚀 Bot running on port ${PORT}`);
+  console.log(`📱 Webhook: https://watsapp2-production.up.railway.app/webhook`);
 });
