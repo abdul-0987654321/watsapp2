@@ -70,7 +70,7 @@ async function sendText(to, message) {
   }
 }
 
-// ─── SEND INTERACTIVE BUTTONS ──────────────────────────
+// ─── SEND INTERACTIVE BUTTONS (FIXED) ──────────────────
 async function sendInteractiveButtons(to, title, buttons) {
   try {
     const payload = {
@@ -81,6 +81,7 @@ async function sendInteractiveButtons(to, title, buttons) {
       },
       action: {
         buttons: buttons.map((btn, index) => ({
+          id: `btn_${index}`,
           type: 'reply',
           reply: {
             id: `btn_${index}`,
@@ -90,7 +91,7 @@ async function sendInteractiveButtons(to, title, buttons) {
       }
     };
     
-    console.log('📤 Sending buttons');
+    console.log('📤 Sending buttons (fixed)');
     const response = await api.post('/messages/interactive', payload);
     console.log('✅ Buttons sent');
     return response.data;
@@ -105,11 +106,11 @@ async function sendInteractiveButtons(to, title, buttons) {
   }
 }
 
-// ─── SEND MENU AS BUTTONS ──────────────────────────────
+// ─── SEND MENU AS BUTTONS (FIXED) ──────────────────────
 async function sendMenuButtons(to, title, items) {
   try {
-    // Menu items ko buttons mein convert karein
     const buttons = items.map(item => ({
+      id: item.id,
       type: 'reply',
       reply: {
         id: item.id,
@@ -128,12 +129,12 @@ async function sendMenuButtons(to, title, items) {
       }
     };
     
-    console.log('📤 Sending menu as buttons');
+    console.log('📤 Sending menu as buttons (fixed)');
     const response = await api.post('/messages/interactive', payload);
-    console.log('✅ Menu sent as buttons');
+    console.log('✅ Menu sent');
     return response.data;
   } catch (err) {
-    console.error('❌ Menu Buttons Error:', err.response?.data || err.message);
+    console.error('❌ Menu Error:', err.response?.data || err.message);
     let menuText = '🍽 MENU:\n';
     items.forEach(item => {
       menuText += `${item.id}. ${item.name} - Rs.${item.price}\n`;
@@ -327,7 +328,6 @@ async function handleMessage(from, text) {
 const app = express();
 app.use(express.json());
 
-// Health Check
 app.get('/', (req, res) => {
   res.json({ status: 'OK', name: 'WhatsApp Food Bot' });
 });
