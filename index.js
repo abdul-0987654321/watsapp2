@@ -4,7 +4,7 @@ const express = require('express');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
-require('dotenv').config();
+
 
 // ─── CONFIG ─────────────────────────────────────────────
 const WHAPI_TOKEN = 'sRfxCOYrER4XYRFoVJ5boPNCZAo34v4A';
