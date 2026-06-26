@@ -70,8 +70,8 @@ async function sendText(to, message) {
   }
 }
 
-// ─── SEND STABLE LIST (RECOMMENDED) ────────────────────
-async function sendStableList(to, title, buttonText, items) {
+// ─── SEND INTERACTIVE LIST (STABLE) ────────────────────
+async function sendInteractiveList(to, title, buttonText, items) {
   try {
     const payload = {
       to: to,
@@ -92,8 +92,9 @@ async function sendStableList(to, title, buttonText, items) {
       }
     };
     
+    console.log('📤 Sending list:', JSON.stringify(payload, null, 2));
     await api.post('/messages/interactive', payload);
-    console.log('✅ Stable list sent');
+    console.log('✅ List sent');
     return true;
   } catch (err) {
     console.error('❌ List Error:', err.response?.data || err.message);
@@ -101,8 +102,8 @@ async function sendStableList(to, title, buttonText, items) {
   }
 }
 
-// ─── SEND STABLE BUTTONS ───────────────────────────────
-async function sendStableButtons(to, title, buttons) {
+// ─── SEND INTERACTIVE BUTTONS (STABLE) ─────────────────
+async function sendInteractiveButtons(to, title, buttons) {
   try {
     const payload = {
       to: to,
@@ -123,8 +124,9 @@ async function sendStableButtons(to, title, buttons) {
       }
     };
     
+    console.log('📤 Sending buttons:', JSON.stringify(payload, null, 2));
     await api.post('/messages/interactive', payload);
-    console.log('✅ Stable buttons sent');
+    console.log('✅ Buttons sent');
     return true;
   } catch (err) {
     console.error('❌ Buttons Error:', err.response?.data || err.message);
@@ -189,12 +191,11 @@ async function handleMessage(from, text) {
     session.step = "main";
     
     await sendText(from, "👋 Welcome to Our Restaurant!");
-    const success = await sendStableButtons(from, 
+    const success = await sendInteractiveButtons(from, 
       "What would you like to do?", 
       ["📋 View Menu", "🛒 My Cart", "❓ Help"]
     );
     
-    // If buttons fail, send fallback
     if (!success) {
       await sendText(from, "Type:\n1. View Menu\n2. My Cart\n3. Help");
     }
@@ -213,10 +214,10 @@ async function handleMessage(from, text) {
     return;
   }
 
-  // VIEW MENU
+  // VIEW MENU - Button click
   if (msg.includes('view menu') || msg.includes('open menu')) {
     session.step = "browsing";
-    const success = await sendStableList(from, 
+    const success = await sendInteractiveList(from, 
       "🍽 Select your item:", 
       "📋 Open Menu", 
       MENU
@@ -228,20 +229,20 @@ async function handleMessage(from, text) {
     return;
   }
 
-  // MY CART
+  // MY CART - Button click
   if (msg.includes('my cart') || msg.includes('cart')) {
     if (session.cart.length === 0) {
       await sendText(from, "🛒 Your cart is empty!");
-      await sendStableButtons(from, "What would you like?", ["📋 View Menu", "❓ Help"]);
+      await sendInteractiveButtons(from, "What would you like?", ["📋 View Menu", "❓ Help"]);
     } else {
       const { text: ctext } = cartText(session.cart);
       await sendText(from, ctext);
-      await sendStableButtons(from, "What next?", ["📋 Add More", "🛒 Checkout", "❌ Cancel"]);
+      await sendInteractiveButtons(from, "What next?", ["📋 Add More", "🛒 Checkout", "❌ Cancel"]);
     }
     return;
   }
 
-  // MENU ITEM SELECTION
+  // MENU ITEM SELECTION (List se click)
   if (session.step === "browsing") {
     const item = MENU.find(m => m.id === text.trim());
     if (item) {
@@ -257,7 +258,7 @@ async function handleMessage(from, text) {
       session.step = "cart";
       const { text: ctext } = cartText(session.cart);
       await sendText(from, ctext);
-      await sendStableButtons(from, "What next?", ["📋 More Items", "🛒 Checkout", "❌ Cancel"]);
+      await sendInteractiveButtons(from, "What next?", ["📋 More Items", "🛒 Checkout", "❌ Cancel"]);
       return;
     }
   }
@@ -272,7 +273,7 @@ async function handleMessage(from, text) {
     
     if (msg.includes("more items") || msg.includes("add more")) {
       session.step = "browsing";
-      await sendStableList(from, "🍽 Select more items:", "📋 Open Menu", MENU);
+      await sendInteractiveList(from, "🍽 Select more items:", "📋 Open Menu", MENU);
       return;
     }
     
@@ -283,7 +284,7 @@ async function handleMessage(from, text) {
     }
   }
 
-  // NAME, ADDRESS, PHONE, CONFIRM
+  // NAME
   if (session.step === "name") {
     session.name = text;
     session.step = "address";
@@ -291,6 +292,7 @@ async function handleMessage(from, text) {
     return;
   }
 
+  // ADDRESS
   if (session.step === "address") {
     session.address = text;
     session.step = "phone";
@@ -298,16 +300,18 @@ async function handleMessage(from, text) {
     return;
   }
 
+  // PHONE
   if (session.step === "phone") {
     session.phone = text;
     session.step = "confirm";
     
     const { text: ctext, total } = cartText(session.cart);
     await sendText(from, `📋 ORDER SUMMARY\n\n${ctext}\nTotal: Rs.${total}`);
-    await sendStableButtons(from, "Confirm order?", ["✅ Yes", "❌ No"]);
+    await sendInteractiveButtons(from, "Confirm order?", ["✅ Yes", "❌ No"]);
     return;
   }
 
+  // CONFIRM
   if (session.step === "confirm") {
     if (msg === "yes" || msg === "✅ yes") {
       await processOrder(from, session);
@@ -326,12 +330,21 @@ async function handleMessage(from, text) {
 const app = express();
 app.use(express.json());
 
+// Health Check
 app.get('/', (req, res) => {
-  res.json({ status: 'OK', name: 'WhatsApp Food Bot' });
+  res.json({ 
+    status: 'OK', 
+    name: 'WhatsApp Food Bot',
+    version: '1.0.0'
+  });
 });
 
 app.get('/health', (req, res) => {
-  res.json({ status: 'OK', sessions: sessions.size, uptime: process.uptime() });
+  res.json({ 
+    status: 'OK', 
+    sessions: sessions.size,
+    uptime: process.uptime()
+  });
 });
 
 app.get('/webhook', (req, res) => {
@@ -349,14 +362,19 @@ app.post('/webhook', async (req, res) => {
     let from = null;
     let text = null;
 
+    // Parse Whapi webhook format
     if (data.messages && Array.isArray(data.messages) && data.messages.length > 0) {
       const message = data.messages[0];
+      
+      // Get sender
       from = message.from || message.chat_id?.split('@')[0];
       
+      // Get text from different formats
       if (message.text) {
         text = message.text.body || message.text;
       }
       
+      // Handle interactive responses (buttons/list clicks)
       if (message.interactive) {
         if (message.interactive.button_reply) {
           text = message.interactive.button_reply.title;
@@ -365,11 +383,19 @@ app.post('/webhook', async (req, res) => {
         }
       }
       
-      if (!text) text = message.body || '';
+      // Fallback
+      if (!text) {
+        text = message.body || message.text || '';
+      }
     }
 
-    if (!from) from = data.from || data.sender?.phone;
-    if (!text) text = data.text || data.body || '';
+    // Direct format fallback
+    if (!from) {
+      from = data.from || data.sender?.phone || data.chat_id?.split('@')[0];
+    }
+    if (!text) {
+      text = data.text || data.message?.text || data.body || '';
+    }
 
     console.log(`👤 From: ${from}`);
     console.log(`💬 Text: ${text}`);
@@ -383,6 +409,7 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
+// ─── START ──────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`🚀 Bot running on port ${PORT}`);
   console.log(`📱 Webhook: https://watsapp2-production.up.railway.app/webhook`);
