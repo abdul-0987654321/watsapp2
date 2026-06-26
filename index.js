@@ -67,8 +67,8 @@ async function sendButtons(to, header, body, footer, buttons) {
     const btns = buttons.map((b, i) => ({
       buttonId: String(i + 1),
       buttonText: b,
-    })); // ⚠️ type field hata diya
-    await api.post(`/sendInteractiveButtonsReply/${API_TOKEN}`, { // ⚠️ endpoint change
+    }));
+    await api.post(`/sendInteractiveButtonsReply/${API_TOKEN}`, {
       chatId,
       header,
       body,
@@ -84,7 +84,6 @@ async function sendButtons(to, header, body, footer, buttons) {
     await sendText(to, txt);
   }
 }
-
 // List message for menu (max 10 per section)
 async function sendListMessage(to, header, body, buttonText, sections) {
   try {
@@ -110,30 +109,11 @@ async function sendListMessage(to, header, body, buttonText, sections) {
 
 // ─── MENU SENDER ─────────────────────────────────────────────
 async function sendMenu(to) {
-  await sendListMessage(
-    to,
-    '🍽️ Hamara Menu',
-    'Apni pasand ki item chunein:',
-    '📋 Menu Kholein',
-    [
-      {
-        title: '🍗 Main Course',
-        rows: MENU.slice(0, 4).map(m => ({
-          rowId: m.id,
-          title: `${m.id}. ${m.name}`,
-          description: `Rs.${m.price}${m.desc ? ' — ' + m.desc : ''}`,
-        })),
-      },
-      {
-        title: '🥗 Extras & Desserts',
-        rows: MENU.slice(4).map(m => ({
-          rowId: m.id,
-          title: `${m.id}. ${m.name}`,
-          description: `Rs.${m.price}${m.desc ? ' — ' + m.desc : ''}`,
-        })),
-      },
-    ]
-  );
+  const menuText =
+    '🍽️ *Hamara Menu*\n\n' +
+    MENU.map(m => `*${m.id}.* ${m.name} — *Rs.${m.price}*${m.desc ? '\n    _' + m.desc + '_' : ''}`).join('\n') +
+    '\n\n👆 Item number type karein (jaise: *1* ya *1,3*)';
+  await sendText(to, menuText);
 }
 
 // ─── CART HELPER ─────────────────────────────────────────────
