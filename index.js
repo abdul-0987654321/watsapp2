@@ -11,7 +11,7 @@ const ID_INSTANCE  = '7107665041';
 const API_TOKEN    = '790b8e8e4f294b80b37f6fb3804a57ad316d2cc00cad41ed9b';
 const BASE_URL     = `https://7107.api.greenapi.com/waInstance${ID_INSTANCE}`;
 const OWNER_NUMBER = '923371240707';
-const PORT         = process.env.PORT || 3000;
+const PORT = process.env.PORT;
 const ORDERS_FILE  = path.join(__dirname, 'orders.json');
 
 // ─── MENU ───────────────────────────────────────────────
