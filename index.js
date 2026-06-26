@@ -70,7 +70,7 @@ async function sendText(to, message) {
   }
 }
 
-// ─── SEND INTERACTIVE BUTTONS (FIXED) ──────────────────
+// ─── SEND INTERACTIVE BUTTONS (FINAL) ──────────────────
 async function sendInteractiveButtons(to, title, buttons) {
   try {
     const payload = {
@@ -82,6 +82,7 @@ async function sendInteractiveButtons(to, title, buttons) {
       action: {
         buttons: buttons.map((btn, index) => ({
           id: `btn_${index}`,
+          title: btn,
           type: 'reply',
           reply: {
             id: `btn_${index}`,
@@ -91,7 +92,7 @@ async function sendInteractiveButtons(to, title, buttons) {
       }
     };
     
-    console.log('📤 Sending buttons (fixed)');
+    console.log('📤 Sending buttons (final)');
     const response = await api.post('/messages/interactive', payload);
     console.log('✅ Buttons sent');
     return response.data;
@@ -106,15 +107,16 @@ async function sendInteractiveButtons(to, title, buttons) {
   }
 }
 
-// ─── SEND MENU AS BUTTONS (FIXED) ──────────────────────
+// ─── SEND MENU AS BUTTONS (FINAL) ──────────────────────
 async function sendMenuButtons(to, title, items) {
   try {
     const buttons = items.map(item => ({
       id: item.id,
+      title: `${item.name} - Rs.${item.price}`,
       type: 'reply',
       reply: {
         id: item.id,
-        title: `${item.name} - Rs.${item.price}`
+        title: `${item.name}`
       }
     }));
 
@@ -129,7 +131,7 @@ async function sendMenuButtons(to, title, items) {
       }
     };
     
-    console.log('📤 Sending menu as buttons (fixed)');
+    console.log('📤 Sending menu as buttons (final)');
     const response = await api.post('/messages/interactive', payload);
     console.log('✅ Menu sent');
     return response.data;
