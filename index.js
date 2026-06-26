@@ -70,7 +70,7 @@ async function sendText(to, message) {
   }
 }
 
-// ─── SEND INTERACTIVE LIST (STABLE) ────────────────────
+// ─── SEND INTERACTIVE LIST ─────────────────────────────
 async function sendInteractiveList(to, title, buttonText, items) {
   try {
     const payload = {
@@ -92,17 +92,18 @@ async function sendInteractiveList(to, title, buttonText, items) {
       }
     };
     
-    console.log('📤 Sending list:', JSON.stringify(payload, null, 2));
+    console.log('📤 Sending list');
     await api.post('/messages/interactive', payload);
     console.log('✅ List sent');
     return true;
   } catch (err) {
     console.error('❌ List Error:', err.response?.data || err.message);
+    await sendText(to, items.map(i => `${i.id}. ${i.name} - Rs.${i.price}`).join('\n'));
     return false;
   }
 }
 
-// ─── SEND INTERACTIVE BUTTONS (STABLE) ─────────────────
+// ─── SEND INTERACTIVE BUTTONS ──────────────────────────
 async function sendInteractiveButtons(to, title, buttons) {
   try {
     const payload = {
@@ -118,18 +119,19 @@ async function sendInteractiveButtons(to, title, buttons) {
           rows: buttons.map((btn, index) => ({
             id: `btn_${index}`,
             title: btn,
-            description: `Click to ${btn.toLowerCase()}`
+            description: 'Tap to select'
           }))
         }]
       }
     };
     
-    console.log('📤 Sending buttons:', JSON.stringify(payload, null, 2));
+    console.log('📤 Sending buttons');
     await api.post('/messages/interactive', payload);
     console.log('✅ Buttons sent');
     return true;
   } catch (err) {
     console.error('❌ Buttons Error:', err.response?.data || err.message);
+    await sendText(to, `${title}\n${buttons.map((b, i) => `${i+1}. ${b}`).join('\n')}`);
     return false;
   }
 }
@@ -191,14 +193,10 @@ async function handleMessage(from, text) {
     session.step = "main";
     
     await sendText(from, "👋 Welcome to Our Restaurant!");
-    const success = await sendInteractiveButtons(from, 
+    await sendInteractiveButtons(from, 
       "What would you like to do?", 
       ["📋 View Menu", "🛒 My Cart", "❓ Help"]
     );
-    
-    if (!success) {
-      await sendText(from, "Type:\n1. View Menu\n2. My Cart\n3. Help");
-    }
     return;
   }
 
@@ -214,22 +212,18 @@ async function handleMessage(from, text) {
     return;
   }
 
-  // VIEW MENU - Button click
+  // VIEW MENU
   if (msg.includes('view menu') || msg.includes('open menu')) {
     session.step = "browsing";
-    const success = await sendInteractiveList(from, 
+    await sendInteractiveList(from, 
       "🍽 Select your item:", 
       "📋 Open Menu", 
       MENU
     );
-    
-    if (!success) {
-      await sendText(from, MENU.map(i => `${i.id}. ${i.name} - Rs.${i.price}`).join('\n'));
-    }
     return;
   }
 
-  // MY CART - Button click
+  // MY CART
   if (msg.includes('my cart') || msg.includes('cart')) {
     if (session.cart.length === 0) {
       await sendText(from, "🛒 Your cart is empty!");
@@ -242,7 +236,7 @@ async function handleMessage(from, text) {
     return;
   }
 
-  // MENU ITEM SELECTION (List se click)
+  // MENU ITEM SELECTION
   if (session.step === "browsing") {
     const item = MENU.find(m => m.id === text.trim());
     if (item) {
@@ -332,19 +326,11 @@ app.use(express.json());
 
 // Health Check
 app.get('/', (req, res) => {
-  res.json({ 
-    status: 'OK', 
-    name: 'WhatsApp Food Bot',
-    version: '1.0.0'
-  });
+  res.json({ status: 'OK', name: 'WhatsApp Food Bot' });
 });
 
 app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
-    sessions: sessions.size,
-    uptime: process.uptime()
-  });
+  res.json({ status: 'OK', sessions: sessions.size, uptime: process.uptime() });
 });
 
 app.get('/webhook', (req, res) => {
@@ -362,19 +348,14 @@ app.post('/webhook', async (req, res) => {
     let from = null;
     let text = null;
 
-    // Parse Whapi webhook format
     if (data.messages && Array.isArray(data.messages) && data.messages.length > 0) {
       const message = data.messages[0];
-      
-      // Get sender
       from = message.from || message.chat_id?.split('@')[0];
       
-      // Get text from different formats
       if (message.text) {
         text = message.text.body || message.text;
       }
       
-      // Handle interactive responses (buttons/list clicks)
       if (message.interactive) {
         if (message.interactive.button_reply) {
           text = message.interactive.button_reply.title;
@@ -383,19 +364,11 @@ app.post('/webhook', async (req, res) => {
         }
       }
       
-      // Fallback
-      if (!text) {
-        text = message.body || message.text || '';
-      }
+      if (!text) text = message.body || '';
     }
 
-    // Direct format fallback
-    if (!from) {
-      from = data.from || data.sender?.phone || data.chat_id?.split('@')[0];
-    }
-    if (!text) {
-      text = data.text || data.message?.text || data.body || '';
-    }
+    if (!from) from = data.from || data.sender?.phone;
+    if (!text) text = data.text || data.body || '';
 
     console.log(`👤 From: ${from}`);
     console.log(`💬 Text: ${text}`);
