@@ -70,9 +70,10 @@ async function sendText(to, message) {
   }
 }
 
-// ─── SEND INTERACTIVE LIST ─────────────────────────────
+// ─── SEND INTERACTIVE LIST (WHAPI COMPATIBLE) ──────────
 async function sendInteractiveList(to, title, buttonText, items) {
   try {
+    // Whapi format - sections array with rows
     const payload = {
       to: to,
       type: 'list',
@@ -81,31 +82,39 @@ async function sendInteractiveList(to, title, buttonText, items) {
       },
       action: {
         button: buttonText || '📋 Open Menu',
-        sections: [{
-          title: '🍽 Menu Items',
-          rows: items.map(item => ({
-            id: item.id,
-            title: item.name,
-            description: `Rs.${item.price}`
-          }))
-        }]
+        sections: [
+          {
+            title: '🍽 Menu Items',
+            rows: items.map(item => ({
+              id: item.id,
+              title: item.name,
+              description: `Rs.${item.price}`
+            }))
+          }
+        ]
       }
     };
     
-    console.log('📤 Sending list');
-    await api.post('/messages/interactive', payload);
-    console.log('✅ List sent');
-    return true;
+    console.log('📤 Sending list payload:', JSON.stringify(payload, null, 2));
+    const response = await api.post('/messages/interactive', payload);
+    console.log('✅ List sent successfully');
+    return response.data;
   } catch (err) {
     console.error('❌ List Error:', err.response?.data || err.message);
-    await sendText(to, items.map(i => `${i.id}. ${i.name} - Rs.${i.price}`).join('\n'));
-    return false;
+    // Fallback to text menu
+    let menuText = '🍽 MENU:\n';
+    items.forEach(item => {
+      menuText += `${item.id}. ${item.name} - Rs.${item.price}\n`;
+    });
+    await sendText(to, menuText);
+    return null;
   }
 }
 
-// ─── SEND INTERACTIVE BUTTONS ──────────────────────────
+// ─── SEND INTERACTIVE BUTTONS (WHAPI COMPATIBLE) ──────
 async function sendInteractiveButtons(to, title, buttons) {
   try {
+    // Whapi format - sections array with rows as buttons
     const payload = {
       to: to,
       type: 'list',
@@ -114,25 +123,32 @@ async function sendInteractiveButtons(to, title, buttons) {
       },
       action: {
         button: '📱 Select Option',
-        sections: [{
-          title: 'Options',
-          rows: buttons.map((btn, index) => ({
-            id: `btn_${index}`,
-            title: btn,
-            description: 'Tap to select'
-          }))
-        }]
+        sections: [
+          {
+            title: 'Options',
+            rows: buttons.map((btn, index) => ({
+              id: `btn_${index}`,
+              title: btn,
+              description: 'Tap to select'
+            }))
+          }
+        ]
       }
     };
     
-    console.log('📤 Sending buttons');
-    await api.post('/messages/interactive', payload);
-    console.log('✅ Buttons sent');
-    return true;
+    console.log('📤 Sending buttons payload:', JSON.stringify(payload, null, 2));
+    const response = await api.post('/messages/interactive', payload);
+    console.log('✅ Buttons sent successfully');
+    return response.data;
   } catch (err) {
     console.error('❌ Buttons Error:', err.response?.data || err.message);
-    await sendText(to, `${title}\n${buttons.map((b, i) => `${i+1}. ${b}`).join('\n')}`);
-    return false;
+    // Fallback to text buttons
+    let buttonText = `${title}:\n`;
+    buttons.forEach((btn, index) => {
+      buttonText += `${index + 1}. ${btn}\n`;
+    });
+    await sendText(to, buttonText);
+    return null;
   }
 }
 
