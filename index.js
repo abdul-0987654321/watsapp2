@@ -97,7 +97,7 @@ async function sendInteractiveButtons(to, title, buttons) {
     return response.data;
   } catch (err) {
     console.error('❌ Buttons Error:', err.response?.data || err.message);
-    // Fallback
+    // Fallback - text mode
     await sendText(to, `${title}\n${buttons.map((b, i) => `${i+1}. ${b}`).join('\n')}`);
   }
 }
@@ -131,7 +131,7 @@ async function sendInteractiveList(to, title, buttonText, items) {
     return response.data;
   } catch (err) {
     console.error('❌ List Error:', err.response?.data || err.message);
-    // Fallback
+    // Fallback - text mode
     await sendText(to, items.map(i => `${i.id}. ${i.name} - Rs.${i.price}`).join('\n'));
   }
 }
