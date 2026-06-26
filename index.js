@@ -6,9 +6,9 @@ const fs      = require('fs');
 const path    = require('path');
 
 // ─── CONFIG ─────────────────────────────────────────────────
-const ID_INSTANCE  = '7107665041';
-const API_TOKEN    = '790b8e8e4f294b80b37f6fb3804a57ad316d2cc00cad41ed9b';
-const BASE_URL     = `https://7107.api.greenapi.com/waInstance${ID_INSTANCE}`;
+const INSTANCE   = 'instance182522';
+const TOKEN      = 'gc9oes1x4ww25rrh';
+const BASE_URL   = `https://api.ultramsg.com/${INSTANCE}`;
 const OWNER_NUMBER = '923371240707';
 const PORT         = process.env.PORT || 3000;
 const ORDERS_FILE  = path.join(__dirname, 'orders.json');
@@ -47,75 +47,81 @@ function resetSession(id) {
   sessions.set(id, { step: 'idle', cart: [], name: null, address: null, phone: null, lastSeen: Date.now() });
 }
 
-// ─── GREEN API ───────────────────────────────────────────────
+// ─── ULTRAMSG API ────────────────────────────────────────────
 const api = axios.create({ baseURL: BASE_URL });
 
+// Send plain text
 async function sendText(to, message) {
   try {
-    const chatId = `${to.replace(/\D/g, '')}@c.us`;
-    await api.post(`/sendMessage/${API_TOKEN}`, { chatId, message });
+    const phone = to.replace(/\D/g, '');
+    await api.post('/messages/chat', null, {
+      params: { token: TOKEN, to: phone, body: message }
+    });
     console.log(`✅ sendText → ${to}`);
   } catch (err) {
     console.error('sendText error:', err.response?.data || err.message);
   }
 }
 
-// Interactive reply buttons (max 3)
-async function sendButtons(to, header, body, footer, buttons) {
+// Send buttons (UltraMsg supports up to 3 buttons)
+async function sendButtons(to, body, buttons) {
   try {
-    const chatId = `${to.replace(/\D/g, '')}@c.us`;
-    const btns = buttons.map((b, i) => ({
-      buttonId: String(i + 1),
-      buttonText: b,
-    }));
-    await api.post(`/sendInteractiveButtonsReply/${API_TOKEN}`, {
-      chatId,
-      header,
-      body,
-      footer,
-      buttons: btns,
+    const phone = to.replace(/\D/g, '');
+    // UltraMsg buttons format
+    const btns = buttons.map(b => ({ type: 'reply', reply: { id: b.id, title: b.title } }));
+    await api.post('/messages/button', null, {
+      params: {
+        token: TOKEN,
+        to: phone,
+        body,
+        buttons: JSON.stringify(btns),
+      }
     });
     console.log(`✅ sendButtons → ${to}`);
   } catch (err) {
     console.error('sendButtons error — fallback text:', err.response?.data || err.message);
-    const txt = `${header ? header + '\n' : ''}${body}\n\n` +
-      buttons.map((b, i) => `${i + 1}. ${b}`).join('\n') +
-      (footer ? `\n\n${footer}` : '');
+    // Fallback plain text
+    const txt = body + '\n\n' + buttons.map((b, i) => `${i + 1}. ${b.title}`).join('\n');
     await sendText(to, txt);
   }
 }
-// List message for menu (max 10 per section)
-async function sendListMessage(to, header, body, buttonText, sections) {
+
+// Send list message (UltraMsg)
+async function sendList(to, body, buttonText, sections) {
   try {
-    const chatId = `${to.replace(/\D/g, '')}@c.us`;
-    await api.post(`/sendListMessage/${API_TOKEN}`, {
-      chatId,
-      message: body,     // ⚠️ "body" → "message"
-      title: header,     // ⚠️ "header" → "title"
-      footer: '👇 Item chunein',
-      buttonText,
-      sections,
+    const phone = to.replace(/\D/g, '');
+    await api.post('/messages/list', null, {
+      params: {
+        token: TOKEN,
+        to: phone,
+        body,
+        buttonText,
+        sections: JSON.stringify(sections),
+      }
     });
-    console.log(`✅ sendListMessage → ${to}`);
+    console.log(`✅ sendList → ${to}`);
   } catch (err) {
-    console.error('sendListMessage error — fallback text:', err.response?.data || err.message);
-    await sendText(to,
-      `${header}\n\n${body}\n\n` +
-      MENU.map(m => `*${m.id}.* ${m.name} — *Rs.${m.price}*${m.desc ? '\n    _' + m.desc + '_' : ''}`).join('\n') +
-      '\n\n👆 Item number type karein (jaise: *1* ya *1,3*)'
-    );
+    console.error('sendList error — fallback text:', err.response?.data || err.message);
+    await sendMenuText(to);
   }
 }
 
 // ─── MENU SENDER ─────────────────────────────────────────────
-// ─── MENU SENDER (List Message with single button) ─────────────
+async function sendMenuText(to) {
+  const menuText =
+    '🍽️ *Hamara Menu*\n\n' +
+    MENU.map(m => `*${m.id}.* ${m.name} — *Rs.${m.price}*${m.desc ? '\n    _' + m.desc + '_' : ''}`).join('\n') +
+    '\n\n👆 Item number type karein (jaise: *1* ya *1,3*)';
+  await sendText(to, menuText);
+}
+
 async function sendMenu(to) {
   const sections = [
     {
       title: '🍗 Chicken Items',
       rows: [
-        { title: 'Chicken Roast (Full)', rowId: '1', description: 'Rs.1350 — Ketchup & Fresh Lemons ke sath' },
-        { title: 'Chicken Roast (Half)', rowId: '2', description: 'Rs.700 — Ketchup & Fresh Lemons ke sath' },
+        { title: 'Chicken Roast (Full)', rowId: '1', description: 'Rs.1350 — Ketchup & Lemons ke sath' },
+        { title: 'Chicken Roast (Half)', rowId: '2', description: 'Rs.700 — Ketchup & Lemons ke sath' },
         { title: 'Chicken Piece',        rowId: '4', description: 'Rs.180 — Chest/Leg/Thigh/Wing' },
       ]
     },
@@ -136,26 +142,12 @@ async function sendMenu(to) {
     }
   ];
 
-  try {
-    const chatId = `${to.replace(/\D/g, '')}@c.us`;
-    await api.post(`/sendListMessage/${API_TOKEN}`, {
-      chatId,
-      message: 'Apni pasand ka item chunein 👇',
-      title: '🍽️ Hamara Menu',
-      footer: 'Item select karein order ke liye',
-      buttonText: '📋 Menu Dekhen',   // ← yahi BUTTON hai
-      sections,
-    });
-    console.log(`✅ sendMenu (list) → ${to}`);
-  } catch (err) {
-    console.error('sendMenu error — fallback:', err.response?.data || err.message);
-    // Fallback: plain text
-    await sendText(to,
-      '🍽️ *Hamara Menu*\n\n' +
-      MENU.map(m => `*${m.id}.* ${m.name} — *Rs.${m.price}*${m.desc ? '\n    _' + m.desc + '_' : ''}`).join('\n') +
-      '\n\n👆 Number type karein (jaise: *1* ya *1,3*)'
-    );
-  }
+  await sendList(
+    to,
+    'Apni pasand ka item chunein 👇',
+    '📋 Menu Dekhen',
+    sections
+  );
 }
 
 // ─── CART HELPER ─────────────────────────────────────────────
@@ -228,7 +220,7 @@ async function handleMessage(from, body) {
     return;
   }
 
-  // BROWSING — list response ya text number
+  // BROWSING
   if (session.step === 'browsing') {
     const ids   = text.split(',').map(s => s.trim());
     const valid = ids.map(id => MENU.find(m => m.id === id)).filter(Boolean);
@@ -246,26 +238,28 @@ async function handleMessage(from, body) {
     await sendText(from, cartText);
     await sendButtons(from,
       '📌 Aur kuch add karna hai?',
-      'Cart mein kya karna chahte hain?',
-      '',
-      ['✅ Checkout karna hai', '➕ Aur add karna hai', '❌ Cancel']
+      [
+        { id: '1', title: '✅ Checkout' },
+        { id: '2', title: '➕ Aur Add Karein' },
+        { id: '3', title: '❌ Cancel' },
+      ]
     );
     return;
   }
 
   // CONFIRM MORE
   if (session.step === 'confirm_more') {
-    if (/checkout|done|confirm|1/i.test(lower)) {
+    if (/checkout|done|confirm|^1$/i.test(lower)) {
       session.step = 'ask_name';
       await sendText(from, '👤 Apna *naam* bhejein:');
       return;
     }
-    if (/aur|add|➕|2/i.test(lower)) {
+    if (/aur|add|➕|^2$/i.test(lower)) {
       session.step = 'browsing';
       await sendMenu(from);
       return;
     }
-    if (/cancel|❌|3/i.test(lower)) {
+    if (/cancel|❌|^3$/i.test(lower)) {
       resetSession(from);
       await sendText(from, '❌ *Order cancel ho gaya.*\nDobara order ke liye *menu* likhein. 😊');
       return;
@@ -281,12 +275,16 @@ async function handleMessage(from, body) {
       }
       const { text: cartText } = buildCartText(session.cart);
       await sendText(from, cartText);
-      await sendButtons(from, '📌 Aur kuch?', 'Cart mein kya karna chahte hain?', '', [
-        '✅ Checkout karna hai', '➕ Aur add karna hai', '❌ Cancel'
+      await sendButtons(from, '📌 Aur kuch?', [
+        { id: '1', title: '✅ Checkout' },
+        { id: '2', title: '➕ Aur Add Karein' },
+        { id: '3', title: '❌ Cancel' },
       ]);
     } else {
-      await sendButtons(from, '📌 Kya karna hai?', 'Option chunein:', '', [
-        '✅ Checkout karna hai', '➕ Aur add karna hai', '❌ Cancel'
+      await sendButtons(from, '📌 Kya karna hai?', [
+        { id: '1', title: '✅ Checkout' },
+        { id: '2', title: '➕ Aur Add Karein' },
+        { id: '3', title: '❌ Cancel' },
       ]);
     }
     return;
@@ -327,24 +325,26 @@ async function handleMessage(from, body) {
       `━━━━━━━━━━━━━━━━━`
     );
     await sendButtons(from,
-      '✅ Order Confirm karein?',
-      `Total: Rs.${total}`,
-      'Ek baar check kar lein',
-      ['✅ Confirm Order!', '❌ Cancel Order']
+      `✅ Order Confirm karein?\nTotal: Rs.${total}`,
+      [
+        { id: '1', title: '✅ Confirm Order!' },
+        { id: '2', title: '❌ Cancel Order' },
+      ]
     );
     return;
   }
 
   // FINAL CONFIRM
   if (session.step === 'final_confirm') {
-    if (/confirm|yes|haan|ji|ok|1|✅/i.test(lower)) {
+    if (/confirm|yes|haan|ji|ok|^1$|✅/i.test(lower)) {
       await processOrder(from, session);
-    } else if (/cancel|no|nahi|2|❌/i.test(lower)) {
+    } else if (/cancel|no|nahi|^2$|❌/i.test(lower)) {
       resetSession(from);
       await sendText(from, '❌ *Order cancel ho gaya.*\nDobara order ke liye *menu* likhein. 😊');
     } else {
-      await sendButtons(from, '✅ Confirm karein?', 'Order place karna hai?', '', [
-        '✅ Confirm Order!', '❌ Cancel Order'
+      await sendButtons(from, '✅ Confirm karein?', [
+        { id: '1', title: '✅ Confirm Order!' },
+        { id: '2', title: '❌ Cancel Order' },
       ]);
     }
     return;
@@ -363,47 +363,41 @@ app.get('/', (req, res) => res.json({ status: 'ok', sessions: sessions.size, upt
 app.post('/webhook', async (req, res) => {
   res.sendStatus(200);
   try {
-    const body   = req.body;
-    const typeWH = body?.typeWebhook;
-    console.log(`\n📨 Webhook: ${typeWH}`);
+    const body = req.body;
+    console.log('\n📨 Webhook received:', JSON.stringify(body).slice(0, 300));
 
-    if (typeWH !== 'incomingMessageReceived') return;
+    // UltraMsg webhook format
+    const data = body?.data;
+    if (!data) return;
 
-    const senderData = body?.senderData;
-    const msgData    = body?.messageData;
-    if (!senderData || !msgData) return;
+    // Skip outgoing messages
+    if (data.fromMe) return;
 
-    const chatId = senderData.chatId || '';
-    if (chatId.includes('@g.us')) return; // skip groups
+    // Skip groups
+    const from = data.from || '';
+    if (from.includes('@g.us') || from.includes('-')) return;
 
-    const from = chatId.replace('@c.us', '').replace(/\D/g, '');
-    if (!from) return;
+    // Get phone number (UltraMsg sends as 923xxxxxxxxx@c.us or just number)
+    const phone = from.replace('@c.us', '').replace(/\D/g, '');
+    if (!phone) return;
 
-    const msgType = msgData.typeMessage;
+    // Get message text
     let text = '';
-
-    if (msgType === 'textMessage') {
-      text = msgData.textMessageData?.textMessage || '';
-    } else if (msgType === 'extendedTextMessage') {
-      text = msgData.extendedTextMessageData?.text || '';
-    } else if (msgType === 'interactiveResponseMessage') {
-      // List message response
-      text = msgData.interactiveResponseMessageData?.selectedRowId ||
-             msgData.interactiveResponseMessageData?.description || '';
-    } else if (msgType === 'buttonsResponseMessage') {
-      text = msgData.buttonsResponseMessageData?.selectedButtonId ||
-             msgData.buttonsResponseMessageData?.selectedButtonBody || '';
-    } else if (msgType === 'templateButtonReplyMessage') {
-      text = msgData.templateButtonReplyMessageData?.selectedDisplayText || '';
-    }
-
-    if (!text) {
-      console.log('⚠️ No text, msgType:', msgType, JSON.stringify(msgData).slice(0, 200));
+    if (data.type === 'chat') {
+      text = data.body || '';
+    } else if (data.type === 'list_reply') {
+      text = data.listReply?.rowId || data.body || '';
+    } else if (data.type === 'button_reply') {
+      text = data.buttonReply?.id || data.body || '';
+    } else {
+      console.log('⚠️ Unknown type:', data.type);
       return;
     }
 
-    console.log(`📩 From: ${from} | Text: "${text}"`);
-    await handleMessage(from, text);
+    if (!text) return;
+
+    console.log(`📩 From: ${phone} | Text: "${text}"`);
+    await handleMessage(phone, text);
 
   } catch (err) {
     console.error('Webhook error:', err);
