@@ -70,84 +70,75 @@ async function sendText(to, message) {
   }
 }
 
-// ─── SEND INTERACTIVE LIST (WHAPI COMPATIBLE) ──────────
-async function sendInteractiveList(to, title, buttonText, items) {
+// ─── SEND INTERACTIVE BUTTONS ──────────────────────────
+async function sendInteractiveButtons(to, title, buttons) {
   try {
-    // Whapi format - sections array with rows
     const payload = {
       to: to,
-      type: 'list',
+      type: 'button',
       body: {
         text: title
       },
       action: {
-        button: buttonText || '📋 Open Menu',
-        sections: [
-          {
-            title: '🍽 Menu Items',
-            rows: items.map(item => ({
-              id: item.id,
-              title: item.name,
-              description: `Rs.${item.price}`
-            }))
+        buttons: buttons.map((btn, index) => ({
+          type: 'reply',
+          reply: {
+            id: `btn_${index}`,
+            title: btn
           }
-        ]
+        }))
       }
     };
     
-    console.log('📤 Sending list payload:', JSON.stringify(payload, null, 2));
+    console.log('📤 Sending buttons');
     const response = await api.post('/messages/interactive', payload);
-    console.log('✅ List sent successfully');
+    console.log('✅ Buttons sent');
     return response.data;
   } catch (err) {
-    console.error('❌ List Error:', err.response?.data || err.message);
-    // Fallback to text menu
+    console.error('❌ Buttons Error:', err.response?.data || err.message);
+    let text = `${title}:\n`;
+    buttons.forEach((btn, index) => {
+      text += `${index + 1}. ${btn}\n`;
+    });
+    await sendText(to, text);
+    return null;
+  }
+}
+
+// ─── SEND MENU AS BUTTONS ──────────────────────────────
+async function sendMenuButtons(to, title, items) {
+  try {
+    // Menu items ko buttons mein convert karein
+    const buttons = items.map(item => ({
+      type: 'reply',
+      reply: {
+        id: item.id,
+        title: `${item.name} - Rs.${item.price}`
+      }
+    }));
+
+    const payload = {
+      to: to,
+      type: 'button',
+      body: {
+        text: title || '🍽 Select your item:'
+      },
+      action: {
+        buttons: buttons
+      }
+    };
+    
+    console.log('📤 Sending menu as buttons');
+    const response = await api.post('/messages/interactive', payload);
+    console.log('✅ Menu sent as buttons');
+    return response.data;
+  } catch (err) {
+    console.error('❌ Menu Buttons Error:', err.response?.data || err.message);
     let menuText = '🍽 MENU:\n';
     items.forEach(item => {
       menuText += `${item.id}. ${item.name} - Rs.${item.price}\n`;
     });
     await sendText(to, menuText);
-    return null;
-  }
-}
-
-// ─── SEND INTERACTIVE BUTTONS (WHAPI COMPATIBLE) ──────
-async function sendInteractiveButtons(to, title, buttons) {
-  try {
-    // Whapi format - sections array with rows as buttons
-    const payload = {
-      to: to,
-      type: 'list',
-      body: {
-        text: title
-      },
-      action: {
-        button: '📱 Select Option',
-        sections: [
-          {
-            title: 'Options',
-            rows: buttons.map((btn, index) => ({
-              id: `btn_${index}`,
-              title: btn,
-              description: 'Tap to select'
-            }))
-          }
-        ]
-      }
-    };
-    
-    console.log('📤 Sending buttons payload:', JSON.stringify(payload, null, 2));
-    const response = await api.post('/messages/interactive', payload);
-    console.log('✅ Buttons sent successfully');
-    return response.data;
-  } catch (err) {
-    console.error('❌ Buttons Error:', err.response?.data || err.message);
-    // Fallback to text buttons
-    let buttonText = `${title}:\n`;
-    buttons.forEach((btn, index) => {
-      buttonText += `${index + 1}. ${btn}\n`;
-    });
-    await sendText(to, buttonText);
     return null;
   }
 }
@@ -231,11 +222,7 @@ async function handleMessage(from, text) {
   // VIEW MENU
   if (msg.includes('view menu') || msg.includes('open menu')) {
     session.step = "browsing";
-    await sendInteractiveList(from, 
-      "🍽 Select your item:", 
-      "📋 Open Menu", 
-      MENU
-    );
+    await sendMenuButtons(from, "🍽 Select your item:", MENU);
     return;
   }
 
@@ -283,7 +270,7 @@ async function handleMessage(from, text) {
     
     if (msg.includes("more items") || msg.includes("add more")) {
       session.step = "browsing";
-      await sendInteractiveList(from, "🍽 Select more items:", "📋 Open Menu", MENU);
+      await sendMenuButtons(from, "🍽 Select more items:", MENU);
       return;
     }
     
