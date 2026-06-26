@@ -5,60 +5,66 @@ const axios   = require('axios');
 const fs      = require('fs');
 const path    = require('path');
 
-// ─── CONFIG ─────────────────────────────────────────────────
+// ─── CONFIG ─────────────────────────────────────────────
 const ID_INSTANCE  = '7107665041';
 const API_TOKEN    = '790b8e8e4f294b80b37f6fb3804a57ad316d2cc00cad41ed9b';
 const BASE_URL     = `https://7107.api.greenapi.com/waInstance${ID_INSTANCE}`;
 const OWNER_NUMBER = '923371240707';
 const PORT         = process.env.PORT || 3000;
 const ORDERS_FILE  = path.join(__dirname, 'orders.json');
-const SESSION_TTL  = 30 * 60 * 1000;
 
-// ─── MENU ───────────────────────────────────────────────────
+// ─── MENU ───────────────────────────────────────────────
 const MENU = [
-  { id: '1', name: 'Chicken Roast (Full)',  price: 1350, desc: 'Ketchup & Lemon' },
-  { id: '2', name: 'Chicken Roast (Half)',  price: 700,  desc: 'Ketchup & Lemon' },
-  { id: '3', name: 'Shami Kabab (12 Pcs)',  price: 600,  desc: 'Raita' },
-  { id: '4', name: 'Chicken Piece',         price: 180,  desc: '' },
-  { id: '5', name: 'Salad',                 price: 20,   desc: '' },
-  { id: '6', name: 'Raita',                 price: 20,   desc: '' },
+  { id: '1', name: 'Chicken Roast (Full)', price: 1350, desc: 'Fresh' },
+  { id: '2', name: 'Chicken Roast (Half)', price: 700,  desc: 'Fresh' },
+  { id: '3', name: 'Shami Kabab (12 Pcs)', price: 600,  desc: 'Tasty' },
+  { id: '4', name: 'Chicken Piece', price: 180, desc: '' },
+  { id: '5', name: 'Salad', price: 20, desc: '' },
+  { id: '6', name: 'Raita', price: 20, desc: '' }
 ];
 
-// ─── SESSION ────────────────────────────────────────────────
+// ─── SESSION ────────────────────────────────────────────
 const sessions = new Map();
 
 function getSession(id) {
   if (!sessions.has(id)) {
-    sessions.set(id, { step: 'idle', cart: [], name: null, address: null, phone: null, lastSeen: Date.now() });
+    sessions.set(id, {
+      step: 'idle',
+      cart: [],
+      name: null,
+      address: null,
+      phone: null
+    });
   }
-  const s = sessions.get(id);
-  s.lastSeen = Date.now();
-  return s;
+  return sessions.get(id);
 }
 
 function resetSession(id) {
-  sessions.set(id, { step: 'idle', cart: [], name: null, address: null, phone: null, lastSeen: Date.now() });
+  sessions.set(id, {
+    step: 'idle',
+    cart: [],
+    name: null,
+    address: null,
+    phone: null
+  });
 }
 
-// ─── API ────────────────────────────────────────────────────
+// ─── API ────────────────────────────────────────────────
 const api = axios.create({ baseURL: BASE_URL });
 
 async function sendText(to, message) {
-  try {
-    const chatId = `${to.replace(/\D/g, '')}@c.us`;
-    await api.post(`/sendMessage/${API_TOKEN}`, { chatId, message });
-  } catch (err) {
-    console.error(err.response?.data || err.message);
-  }
+  const chatId = `${to.replace(/\D/g, '')}@c.us`;
+  await api.post(`/sendMessage/${API_TOKEN}`, { chatId, message });
 }
 
+// ─── LIST BUTTON (MAIN UI) ─────────────────────────────
 async function sendList(to, title, body, buttonText, items) {
   try {
     const chatId = `${to.replace(/\D/g, '')}@c.us`;
 
     const sections = [
       {
-        title: "Menu",
+        title: "🍽 Menu",
         rows: items.map(i => ({
           id: i.id,
           title: `${i.name} - Rs.${i.price}`,
@@ -69,9 +75,8 @@ async function sendList(to, title, body, buttonText, items) {
 
     await api.post(`/sendListMessage/${API_TOKEN}`, {
       chatId,
-      message: body,
-      title,
-      buttonText,
+      message: body || "Select item",
+      buttonText: buttonText || "Open Menu",
       sections
     });
 
@@ -80,15 +85,15 @@ async function sendList(to, title, body, buttonText, items) {
 
     await sendText(
       to,
-      MENU.map(m => `${m.id}. ${m.name} - Rs.${m.price}`).join('\n')
+      items.map(i => `${i.id}. ${i.name} - Rs.${i.price}`).join('\n')
     );
   }
 }
 
-// ─── CART ───────────────────────────────────────────────────
+// ─── CART ───────────────────────────────────────────────
 function cartText(cart) {
   let total = 0;
-  let text = '🛒 CART:\n';
+  let text = "🛒 CART:\n";
   for (const i of cart) {
     const sub = i.qty * i.price;
     total += sub;
@@ -97,7 +102,7 @@ function cartText(cart) {
   return { text, total };
 }
 
-// ─── ORDER ──────────────────────────────────────────────────
+// ─── ORDER ──────────────────────────────────────────────
 async function saveOrder(order) {
   let data = [];
   try {
@@ -112,7 +117,7 @@ async function processOrder(from, session) {
   const { text, total } = cartText(session.cart);
 
   const order = {
-    id: 'ORD' + Date.now(),
+    id: "ORD" + Date.now(),
     from,
     name: session.name,
     address: session.address,
@@ -124,9 +129,7 @@ async function processOrder(from, session) {
 
   await saveOrder(order);
 
-  await sendText(from,
-    `🎉 Order Confirmed!\nID: ${order.id}\nTotal: Rs.${total}`
-  );
+  await sendText(from, `🎉 Order Confirmed!\nID: ${order.id}\nTotal: Rs.${total}`);
 
   await sendText(OWNER_NUMBER,
     `NEW ORDER\n${order.id}\n${order.name}\n${order.phone}\n${order.address}\n\n${text}\nTotal: Rs.${total}`
@@ -135,90 +138,87 @@ async function processOrder(from, session) {
   resetSession(from);
 }
 
-// ─── MAIN HANDLER ───────────────────────────────────────────
+// ─── MESSAGE HANDLER ────────────────────────────────────
 async function handleMessage(from, text) {
   const session = getSession(from);
   const msg = text.toLowerCase();
 
-  // START
-  if (/menu|start|hi|hello|order/i.test(msg)) {
+  // START → ONLY BUTTON MENU
+  if (msg.match(/menu|start|hi|hello|order/)) {
     resetSession(from);
-    session.step = 'browsing';
+    session.step = "browsing";
 
-    await sendText(from, 'Welcome 👋');
-    await sendList(from, '🍽 Menu', 'Select items:', 'Open Menu', MENU);
+    await sendText(from, "👋 Welcome!");
+    await sendList(from, "🍽 Menu", "Select items:", "Open Menu", MENU);
     return;
   }
 
-  // BROWSING
-  if (session.step === 'browsing') {
+  // BUTTON CLICK (LIST RESPONSE)
+  if (session.step === "browsing") {
     const item = MENU.find(m => m.id === text.trim());
-    if (!item) return sendText(from, "Invalid item");
+    if (!item) return;
 
     const ex = session.cart.find(c => c.id === item.id);
     if (ex) ex.qty++;
     else session.cart.push({ ...item, qty: 1 });
 
-    session.step = 'cart';
+    session.step = "cart";
 
     const { text: ctext } = cartText(session.cart);
 
     await sendText(from, ctext);
-    await sendText(from, "Type 'checkout' or 'menu'");
+    await sendText(from, "🛒 Type 'checkout' or open menu");
     return;
   }
 
   // CART
-  if (session.step === 'cart') {
-    if (msg.includes('checkout')) {
-      session.step = 'name';
-      return sendText(from, "Enter name:");
+  if (session.step === "cart") {
+    if (msg.includes("checkout")) {
+      session.step = "name";
+      return sendText(from, "👤 Enter your name:");
     }
 
-    if (msg.includes('menu')) {
-      session.step = 'browsing';
-      return sendList(from, '🍽 Menu', 'Select:', 'Menu', MENU);
+    if (msg.includes("menu")) {
+      session.step = "browsing";
+      return sendList(from, "🍽 Menu", "Select:", "Open Menu", MENU);
     }
   }
 
   // NAME
-  if (session.step === 'name') {
+  if (session.step === "name") {
     session.name = text;
-    session.step = 'address';
-    return sendText(from, "Enter address:");
+    session.step = "address";
+    return sendText(from, "📍 Enter address:");
   }
 
   // ADDRESS
-  if (session.step === 'address') {
+  if (session.step === "address") {
     session.address = text;
-    session.step = 'phone';
-    return sendText(from, "Enter phone:");
+    session.step = "phone";
+    return sendText(from, "📞 Enter phone:");
   }
 
   // PHONE
-  if (session.step === 'phone') {
+  if (session.step === "phone") {
     session.phone = text;
-    session.step = 'confirm';
+    session.step = "confirm";
 
     const { text: ctext, total } = cartText(session.cart);
 
-    await sendText(from,
-      `SUMMARY\n${ctext}\nTotal: Rs.${total}`
-    );
-
+    await sendText(from, `SUMMARY\n${ctext}\nTotal: Rs.${total}`);
     return sendText(from, "Type YES to confirm");
   }
 
   // CONFIRM
-  if (session.step === 'confirm') {
-    if (msg === 'yes') return processOrder(from, session);
+  if (session.step === "confirm") {
+    if (msg === "yes") return processOrder(from, session);
     return sendText(from, "Cancelled ❌");
   }
 
-  sendText(from, "Type 'menu'");
+  sendText(from, "Type menu");
 }
 
-// ─── WEBHOOK ────────────────────────────────────────────────
+// ─── WEBHOOK ────────────────────────────────────────────
 const app = express();
 app.use(express.json());
 
@@ -231,25 +231,21 @@ app.post('/webhook', async (req, res) => {
     if (data.typeWebhook !== 'incomingMessageReceived') return;
 
     const chatId = data?.senderData?.chatId;
-    const msgType = data?.messageData?.typeMessage;
-
     if (!chatId) return;
 
-    let text = '';
+    let text = "";
 
-    if (msgType === 'textMessage') {
+    const msgType = data.messageData.typeMessage;
+
+    if (msgType === "textMessage") {
       text = data.messageData.textMessageData.textMessage;
-    } else if (msgType === 'extendedTextMessage') {
-      text = data.messageData.extendedTextMessageData.text;
-    } else if (msgType === 'buttonsResponseMessage') {
-      text = data.messageData.buttonsResponseMessageData.selectedButtonId;
-    } else if (msgType === 'interactiveResponseMessage') {
+    } else if (msgType === "interactiveResponseMessage") {
       text = data.messageData.interactiveResponseMessageData.selectedRowId;
     }
 
     if (!text) return;
 
-    const from = chatId.replace('@c.us', '');
+    const from = chatId.replace("@c.us", "");
     await handleMessage(from, text);
 
   } catch (e) {
@@ -257,4 +253,4 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => console.log("Bot running"));
+app.listen(PORT, () => console.log("🚀 Bot running"));
