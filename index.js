@@ -6,8 +6,8 @@ const fs      = require('fs');
 const path    = require('path');
 
 // ─── CONFIG ─────────────────────────────────────────────────
-const ID_INSTANCE  = '7107664814';
-const API_TOKEN    = 'fe62265295b9448bb0ecb4fea4e1e21a7c093746294b4a3ba8';
+const ID_INSTANCE  = '7107665041';
+const API_TOKEN    = '790b8e8e4f294b80b37f6fb3804a57ad316d2cc00cad41ed9b';
 const BASE_URL     = `https://7107.api.greenapi.com/waInstance${ID_INSTANCE}`;
 const OWNER_NUMBER = '923371240707';
 const PORT         = process.env.PORT || 3000;
@@ -108,12 +108,54 @@ async function sendListMessage(to, header, body, buttonText, sections) {
 }
 
 // ─── MENU SENDER ─────────────────────────────────────────────
+// ─── MENU SENDER (List Message with single button) ─────────────
 async function sendMenu(to) {
-  const menuText =
-    '🍽️ *Hamara Menu*\n\n' +
-    MENU.map(m => `*${m.id}.* ${m.name} — *Rs.${m.price}*${m.desc ? '\n    _' + m.desc + '_' : ''}`).join('\n') +
-    '\n\n👆 Item number type karein (jaise: *1* ya *1,3*)';
-  await sendText(to, menuText);
+  const sections = [
+    {
+      title: '🍗 Chicken Items',
+      rows: [
+        { title: 'Chicken Roast (Full)', rowId: '1', description: 'Rs.1350 — Ketchup & Fresh Lemons ke sath' },
+        { title: 'Chicken Roast (Half)', rowId: '2', description: 'Rs.700 — Ketchup & Fresh Lemons ke sath' },
+        { title: 'Chicken Piece',        rowId: '4', description: 'Rs.180 — Chest/Leg/Thigh/Wing' },
+      ]
+    },
+    {
+      title: '🥙 Kabab & Sides',
+      rows: [
+        { title: 'Shami Kabab (12 Pcs)', rowId: '3', description: 'Rs.600 — Salad & Raita ke sath' },
+        { title: 'Salad',                rowId: '5', description: 'Rs.20' },
+        { title: 'Raita',               rowId: '6', description: 'Rs.20' },
+      ]
+    },
+    {
+      title: '🍮 Desserts',
+      rows: [
+        { title: 'Kheer',  rowId: '7', description: 'Rs.180' },
+        { title: 'Zarda',  rowId: '8', description: 'Rs.180 — Sweet Rice with Chamcham & Raisins' },
+      ]
+    }
+  ];
+
+  try {
+    const chatId = `${to.replace(/\D/g, '')}@c.us`;
+    await api.post(`/sendListMessage/${API_TOKEN}`, {
+      chatId,
+      message: 'Apni pasand ka item chunein 👇',
+      title: '🍽️ Hamara Menu',
+      footer: 'Item select karein order ke liye',
+      buttonText: '📋 Menu Dekhen',   // ← yahi BUTTON hai
+      sections,
+    });
+    console.log(`✅ sendMenu (list) → ${to}`);
+  } catch (err) {
+    console.error('sendMenu error — fallback:', err.response?.data || err.message);
+    // Fallback: plain text
+    await sendText(to,
+      '🍽️ *Hamara Menu*\n\n' +
+      MENU.map(m => `*${m.id}.* ${m.name} — *Rs.${m.price}*${m.desc ? '\n    _' + m.desc + '_' : ''}`).join('\n') +
+      '\n\n👆 Number type karein (jaise: *1* ya *1,3*)'
+    );
+  }
 }
 
 // ─── CART HELPER ─────────────────────────────────────────────
