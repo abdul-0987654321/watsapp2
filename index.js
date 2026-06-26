@@ -6,13 +6,13 @@ const fs      = require('fs');
 const path    = require('path');
 
 // ─── CONFIG ─────────────────────────────────────────────────
-const ID_INSTANCE    = '7107664814';
-const API_TOKEN      = 'fe62265295b9448bb0ecb4fea4e1e21a7c093746294b4a3ba8';
-const BASE_URL       = `https://7107.api.greenapi.com/waInstance${ID_INSTANCE}`;
-const OWNER_NUMBER   = '923371240707';   // apna number yahan
-const PORT           = process.env.PORT || 3000;
-const ORDERS_FILE    = path.join(__dirname, 'orders.json');
-const SESSION_TTL    = 30 * 60 * 1000;
+const ID_INSTANCE  = '7107664814';
+const API_TOKEN    = 'fe62265295b9448bb0ecb4fea4e1e21a7c093746294b4a3ba8';
+const BASE_URL     = `https://7107.api.greenapi.com/waInstance${ID_INSTANCE}`;
+const OWNER_NUMBER = '923371240707';
+const PORT         = process.env.PORT || 3000;
+const ORDERS_FILE  = path.join(__dirname, 'orders.json');
+const SESSION_TTL  = 30 * 60 * 1000;
 
 // ─── MENU ───────────────────────────────────────────────────
 const MENU = [
@@ -43,15 +43,13 @@ function getSession(id) {
   s.lastSeen = Date.now();
   return s;
 }
-
 function resetSession(id) {
   sessions.set(id, { step: 'idle', cart: [], name: null, address: null, phone: null, lastSeen: Date.now() });
 }
 
-// ─── GREEN API HELPERS ──────────────────────────────────────
+// ─── GREEN API ───────────────────────────────────────────────
 const api = axios.create({ baseURL: BASE_URL });
 
-// Plain text message
 async function sendText(to, message) {
   try {
     const chatId = `${to.replace(/\D/g, '')}@c.us`;
@@ -62,87 +60,99 @@ async function sendText(to, message) {
   }
 }
 
-// List message (menu-style — works on paid / WhatsApp Business)
-async function sendListMessage(to, title, body, buttonText, sections) {
+// Interactive reply buttons (max 3)
+async function sendButtons(to, header, body, footer, buttons) {
+  try {
+    const chatId = `${to.replace(/\D/g, '')}@c.us`;
+    const btns = buttons.map((b, i) => ({
+      type: 'reply',
+      buttonId: String(i + 1),
+      buttonText: b,
+    }));
+    await api.post(`/sendInteractiveButtons/${API_TOKEN}`, {
+      chatId,
+      header,
+      body,
+      footer,
+      buttons: btns,
+    });
+    console.log(`✅ sendButtons → ${to}`);
+  } catch (err) {
+    console.error('sendButtons error — fallback text:', err.response?.data || err.message);
+    // Fallback: text
+    const txt = `${header ? header + '\n' : ''}${body}\n\n` +
+      buttons.map((b, i) => `${i + 1}. ${b}`).join('\n') +
+      (footer ? `\n\n${footer}` : '');
+    await sendText(to, txt);
+  }
+}
+
+// List message for menu (max 10 per section)
+async function sendListMessage(to, header, body, buttonText, sections) {
   try {
     const chatId = `${to.replace(/\D/g, '')}@c.us`;
     await api.post(`/sendListMessage/${API_TOKEN}`, {
       chatId,
-      header: title,
+      header,
       body,
-      footer: 'Powered by WA Bot',
+      footer: '👇 Item chunein',
       buttonText,
       sections,
     });
     console.log(`✅ sendListMessage → ${to}`);
   } catch (err) {
-    console.error('sendListMessage error — falling back to text:', err.response?.data || err.message);
-    // Fallback: text
-    const text = `${title}\n\n${body}\n\n` +
-      sections.map(s => s.rows.map(r => `• ${r.title} — ${r.description}`).join('\n')).join('\n');
-    await sendText(to, text);
+    console.error('sendListMessage error — fallback text:', err.response?.data || err.message);
+    // Fallback: text menu
+    await sendText(to,
+      `${header}\n\n${body}\n\n` +
+      MENU.map(m => `*${m.id}.* ${m.name} — *Rs.${m.price}*${m.desc ? '\n    _' + m.desc + '_' : ''}`).join('\n') +
+      '\n\n👆 Item number type karein (jaise: *1* ya *1,3*)'
+    );
   }
 }
 
-// Buttons message (max 3 buttons)
-async function sendButtons(to, body, buttons) {
-  try {
-    const chatId = `${to.replace(/\D/g, '')}@c.us`;
-    const btns = buttons.map((b, i) => ({ buttonId: String(i + 1), buttonText: { displayText: b } }));
-    await api.post(`/sendButtons/${API_TOKEN}`, { chatId, contentText: body, footer: '', buttons: btns });
-    console.log(`✅ sendButtons → ${to}`);
-  } catch (err) {
-    console.error('sendButtons error — falling back to text:', err.response?.data || err.message);
-    const text = body + '\n\n' + buttons.map((b, i) => `${i + 1}. ${b}`).join('\n');
-    await sendText(to, text);
-  }
-}
-
-// ─── MENU SENDER ────────────────────────────────────────────
+// ─── MENU SENDER ─────────────────────────────────────────────
 async function sendMenu(to) {
-  // Split menu into sections for list message
-  const sections = [
-    {
-      title: '🍗 Main Course',
-      rows: MENU.slice(0, 4).map(m => ({
-        rowId: m.id,
-        title: `${m.id}. ${m.name}`,
-        description: `Rs. ${m.price}${m.desc ? ' — ' + m.desc : ''}`,
-      })),
-    },
-    {
-      title: '🥗 Extras & Desserts',
-      rows: MENU.slice(4).map(m => ({
-        rowId: m.id,
-        title: `${m.id}. ${m.name}`,
-        description: `Rs. ${m.price}${m.desc ? ' — ' + m.desc : ''}`,
-      })),
-    },
-  ];
-
   await sendListMessage(
     to,
     '🍽️ Hamara Menu',
-    'Neeche se apni pasand ki item chunein:',
-    '📋 Menu Dekhein',
-    sections
+    'Apni pasand ki item chunein:',
+    '📋 Menu Kholein',
+    [
+      {
+        title: '🍗 Main Course',
+        rows: MENU.slice(0, 4).map(m => ({
+          rowId: m.id,
+          title: `${m.id}. ${m.name}`,
+          description: `Rs.${m.price}${m.desc ? ' — ' + m.desc : ''}`,
+        })),
+      },
+      {
+        title: '🥗 Extras & Desserts',
+        rows: MENU.slice(4).map(m => ({
+          rowId: m.id,
+          title: `${m.id}. ${m.name}`,
+          description: `Rs.${m.price}${m.desc ? ' — ' + m.desc : ''}`,
+        })),
+      },
+    ]
   );
 }
 
-// ─── CART HELPER ────────────────────────────────────────────
+// ─── CART HELPER ─────────────────────────────────────────────
 function buildCartText(cart) {
   let total = 0;
   let text = '🛒 *Aapka Cart:*\n━━━━━━━━━━━━━━━━━\n';
   for (const item of cart) {
     const sub = item.qty * item.price;
-    text += `• ${item.qty}x ${item.name} = *Rs. ${sub}*\n`;
+    text += `• ${item.qty}x ${item.name} = *Rs.${sub}*\n`;
     total += sub;
   }
-  text += `━━━━━━━━━━━━━━━━━\n💰 *Total: Rs. ${total}*`;
+  text += `━━━━━━━━━━━━━━━━━\n💰 *Total: Rs.${total}*`;
   return { text, total };
 }
 
-// ─── SAVE ORDER ─────────────────────────────────────────────
+// ─── SAVE ORDER ──────────────────────────────────────────────
 async function saveOrder(order) {
   let orders = [];
   try { orders = JSON.parse(await fs.promises.readFile(ORDERS_FILE, 'utf-8')); } catch {}
@@ -150,74 +160,61 @@ async function saveOrder(order) {
   await fs.promises.writeFile(ORDERS_FILE, JSON.stringify(orders, null, 2));
 }
 
-// ─── PROCESS FINAL ORDER ────────────────────────────────────
+// ─── PROCESS ORDER ───────────────────────────────────────────
 async function processOrder(from, session) {
   const { text: cartText, total } = buildCartText(session.cart);
   const order = {
-    orderId:       'ORD' + Date.now(),
+    orderId: 'ORD' + Date.now(),
     customerPhone: from,
-    name:          session.name,
-    address:       session.address,
-    phone:         session.phone,
-    items:         session.cart,
+    name: session.name,
+    address: session.address,
+    phone: session.phone,
+    items: session.cart,
     total,
-    timestamp:     new Date().toISOString(),
-    status:        'pending',
+    timestamp: new Date().toISOString(),
+    status: 'pending',
   };
   await saveOrder(order);
-
   await sendText(from,
-    `🎉 *Order Confirm Ho Gaya!*\n\n` +
-    `🆔 Order ID: *${order.orderId}*\n` +
-    `💰 Total: *Rs. ${total}*\n\n` +
-    `⏳ Aapka order jald deliver ho ga.\nShukriya! 🙏`
+    `🎉 *Order Confirm Ho Gaya!*\n\n🆔 Order ID: *${order.orderId}*\n💰 Total: *Rs.${total}*\n\n⏳ Aapka order jald deliver ho ga.\nShukriya! 🙏`
   );
-
   const ownerMsg =
-    `🔔 *Naya Order!*\n━━━━━━━━━━━━━━━━━\n` +
-    `🆔 ${order.orderId}\n👤 ${order.name}\n📞 ${order.phone}\n📍 ${order.address}\n` +
-    `━━━━━━━━━━━━━━━━━\n` +
-    order.items.map(i => `• ${i.qty}x ${i.name} = Rs. ${i.qty * i.price}`).join('\n') +
-    `\n━━━━━━━━━━━━━━━━━\n💰 *Total: Rs. ${total}*\n` +
-    `🕐 ${new Date().toLocaleString('en-PK', { timeZone: 'Asia/Karachi' })}`;
+    `🔔 *Naya Order!*\n━━━━━━━━━━━━━━━━━\n🆔 ${order.orderId}\n👤 ${order.name}\n📞 ${order.phone}\n📍 ${order.address}\n━━━━━━━━━━━━━━━━━\n` +
+    order.items.map(i => `• ${i.qty}x ${i.name} = Rs.${i.qty * i.price}`).join('\n') +
+    `\n━━━━━━━━━━━━━━━━━\n💰 *Total: Rs.${total}*\n🕐 ${new Date().toLocaleString('en-PK', { timeZone: 'Asia/Karachi' })}`;
   await sendText(OWNER_NUMBER, ownerMsg);
-
   console.log(`✅ Order saved — ${order.orderId}`);
   resetSession(from);
 }
 
-// ─── MESSAGE HANDLER ────────────────────────────────────────
+// ─── MESSAGE HANDLER ─────────────────────────────────────────
 async function handleMessage(from, body) {
   const session = getSession(from);
   const text    = (body || '').trim();
   const lower   = text.toLowerCase();
 
-  // ── START / MENU ──────────────────────────────────────────
+  // START
   if (/^(hi|hello|salam|assalam|start|menu|order)$/i.test(lower)) {
     resetSession(from);
     getSession(from).step = 'browsing';
-    await sendText(from,
-      `Assalam-o-Alaikum! 👋 *Khush Amdeed!*\n\n` +
-      `🍽️ *Hamara Menu:*\n━━━━━━━━━━━━━━━━━\n` +
-      MENU.map(m => `*${m.id}.* ${m.name} — *Rs. ${m.price}*${m.desc ? '\n    _' + m.desc + '_' : ''}`).join('\n') +
-      `\n━━━━━━━━━━━━━━━━━\n\n👇 Item number type karein (ek ya multiple, comma se):\nMisal: *1* ya *1,3,5*`
-    );
+    await sendText(from, `Assalam-o-Alaikum! 👋 *Khush Amdeed!*\n\nHamara menu dekh rahe hain...`);
+    await sendMenu(from);
     return;
   }
 
-  // ── CANCEL anywhere ───────────────────────────────────────
+  // CANCEL
   if (/^cancel$/i.test(lower)) {
     resetSession(from);
     await sendText(from, '❌ *Order cancel ho gaya.*\nDobara order ke liye *menu* likhein. 😊');
     return;
   }
 
-  // ── BROWSING ──────────────────────────────────────────────
+  // BROWSING — list response ya text number
   if (session.step === 'browsing') {
     const ids   = text.split(',').map(s => s.trim());
     const valid = ids.map(id => MENU.find(m => m.id === id)).filter(Boolean);
     if (!valid.length) {
-      await sendText(from, '❓ Item number samajh nahi aaya.\n\nMenu dekhne ke liye *menu* likhein.\nMisal: *1* ya *1,3*');
+      await sendText(from, '❓ Item nahi mila.\n\nMenu dekhne ke liye *menu* likhein ya number type karein (jaise: *1* ya *1,3*)');
       return;
     }
     for (const item of valid) {
@@ -227,22 +224,34 @@ async function handleMessage(from, body) {
     }
     session.step = 'confirm_more';
     const { text: cartText } = buildCartText(session.cart);
-    await sendText(from, cartText +
-      `\n\n━━━━━━━━━━━━━━━━━\n` +
-      `✅ *done* likhein — checkout ke liye\n` +
-      `➕ Item number likhein — aur add karne ke liye\n` +
-      `❌ *cancel* likhein — order cancel karne ke liye`
+    await sendText(from, cartText);
+    await sendButtons(from,
+      '📌 Aur kuch add karna hai?',
+      'Cart mein kya karna chahte hain?',
+      '',
+      ['✅ Checkout karna hai', '➕ Aur add karna hai', '❌ Cancel']
     );
     return;
   }
 
-  // ── CONFIRM MORE ─────────────────────────────────────────
+  // CONFIRM MORE
   if (session.step === 'confirm_more') {
-    if (/^done$/i.test(lower)) {
+    if (/checkout|done|confirm|1/i.test(lower)) {
       session.step = 'ask_name';
       await sendText(from, '👤 Apna *naam* bhejein:');
       return;
     }
+    if (/aur|add|➕|2/i.test(lower)) {
+      session.step = 'browsing';
+      await sendMenu(from);
+      return;
+    }
+    if (/cancel|❌|3/i.test(lower)) {
+      resetSession(from);
+      await sendText(from, '❌ *Order cancel ho gaya.*\nDobara order ke liye *menu* likhein. 😊');
+      return;
+    }
+    // Maybe adding more items by number
     const ids   = text.split(',').map(s => s.trim());
     const valid = ids.map(id => MENU.find(m => m.id === id)).filter(Boolean);
     if (valid.length) {
@@ -252,16 +261,19 @@ async function handleMessage(from, body) {
         else session.cart.push({ ...item, qty: 1 });
       }
       const { text: cartText } = buildCartText(session.cart);
-      await sendText(from, cartText +
-        `\n\n✅ *done* likhein ya aur item number add karein`
-      );
+      await sendText(from, cartText);
+      await sendButtons(from, '📌 Aur kuch?', 'Cart mein kya karna chahte hain?', '', [
+        '✅ Checkout karna hai', '➕ Aur add karna hai', '❌ Cancel'
+      ]);
     } else {
-      await sendText(from, `✅ *done* likhein checkout ke liye\nYa item number bhejein aur add karne ke liye`);
+      await sendButtons(from, '📌 Kya karna hai?', 'Option chunein:', '', [
+        '✅ Checkout karna hai', '➕ Aur add karna hai', '❌ Cancel'
+      ]);
     }
     return;
   }
 
-  // ── ASK NAME ─────────────────────────────────────────────
+  // ASK NAME
   if (session.step === 'ask_name') {
     if (text.length < 2) { await sendText(from, '⚠️ Sahi *naam* likhein please.'); return; }
     session.name = text;
@@ -270,7 +282,7 @@ async function handleMessage(from, body) {
     return;
   }
 
-  // ── ASK ADDRESS ──────────────────────────────────────────
+  // ASK ADDRESS
   if (session.step === 'ask_address') {
     if (text.length < 5) { await sendText(from, '⚠️ Thoda detail mein *address* likhein.'); return; }
     session.address = text;
@@ -279,7 +291,7 @@ async function handleMessage(from, body) {
     return;
   }
 
-  // ── ASK PHONE ────────────────────────────────────────────
+  // ASK PHONE
   if (session.step === 'ask_phone') {
     if (!/^[0-9+\s\-]{10,15}$/.test(text)) {
       await sendText(from, '⚠️ Sahi *phone number* bhejein\n(Jaise: 03001234567)');
@@ -293,81 +305,81 @@ async function handleMessage(from, body) {
       `👤 Naam:    *${session.name}*\n` +
       `📍 Address: *${session.address}*\n` +
       `📞 Phone:   *${session.phone}*\n\n` +
-      `━━━━━━━━━━━━━━━━━\n` +
-      `✅ *confirm* likhein — order place karne ke liye\n` +
-      `❌ *cancel* likhein — order cancel karne ke liye`
+      `━━━━━━━━━━━━━━━━━`
+    );
+    await sendButtons(from,
+      '✅ Order Confirm karein?',
+      `Total: Rs.${total}`,
+      'Ek baar check kar lein',
+      ['✅ Confirm Order!', '❌ Cancel Order']
     );
     return;
   }
 
-  // ── FINAL CONFIRM ─────────────────────────────────────────
+  // FINAL CONFIRM
   if (session.step === 'final_confirm') {
-    if (/^(yes|haan|ji|confirm|ok|okay|ha)$/i.test(lower)) {
+    if (/confirm|yes|haan|ji|ok|1|✅/i.test(lower)) {
       await processOrder(from, session);
-    } else if (/^(no|nahi|cancel)$/i.test(lower)) {
+    } else if (/cancel|no|nahi|2|❌/i.test(lower)) {
       resetSession(from);
       await sendText(from, '❌ *Order cancel ho gaya.*\nDobara order ke liye *menu* likhein. 😊');
     } else {
-      await sendText(from, '⚠️ *confirm* ya *cancel* likhein.');
+      await sendButtons(from, '✅ Confirm karein?', 'Order place karna hai?', '', [
+        '✅ Confirm Order!', '❌ Cancel Order'
+      ]);
     }
     return;
   }
 
-  // ── DEFAULT ───────────────────────────────────────────────
-  await sendText(from,
-    `Assalam-o-Alaikum! 👋\nOrder karne ke liye *menu* likhein. 😊`
-  );
+  // DEFAULT
+  await sendText(from, 'Assalam-o-Alaikum! 👋\nOrder karne ke liye *menu* likhein. 😊');
 }
 
-// ─── EXPRESS SERVER ──────────────────────────────────────────
+// ─── EXPRESS ─────────────────────────────────────────────────
 const app = express();
 app.use(express.json());
 
 app.get('/', (req, res) => res.json({ status: 'ok', sessions: sessions.size, uptime: process.uptime() }));
 
-// Green API webhook
 app.post('/webhook', async (req, res) => {
   res.sendStatus(200);
   try {
-    const body      = req.body;
-    const typeWH    = body?.typeWebhook;
-    const instanceData = body?.instanceData;
-
+    const body   = req.body;
+    const typeWH = body?.typeWebhook;
     console.log(`\n📨 Webhook: ${typeWH}`);
 
-    // Only handle incoming messages
     if (typeWH !== 'incomingMessageReceived') return;
 
     const senderData = body?.senderData;
     const msgData    = body?.messageData;
-
     if (!senderData || !msgData) return;
 
-    // Skip group messages
     const chatId = senderData.chatId || '';
-    if (chatId.includes('@g.us')) return;
+    if (chatId.includes('@g.us')) return; // skip groups
 
     const from = chatId.replace('@c.us', '').replace(/\D/g, '');
     if (!from) return;
 
-    // Extract text
-    let text = '';
     const msgType = msgData.typeMessage;
+    let text = '';
 
     if (msgType === 'textMessage') {
       text = msgData.textMessageData?.textMessage || '';
     } else if (msgType === 'extendedTextMessage') {
       text = msgData.extendedTextMessageData?.text || '';
+    } else if (msgType === 'interactiveResponseMessage') {
+      // List message response
+      text = msgData.interactiveResponseMessageData?.selectedRowId ||
+             msgData.interactiveResponseMessageData?.description || '';
     } else if (msgType === 'buttonsResponseMessage') {
-      text = msgData.buttonsResponseMessageData?.selectedButtonBody || '';
-    } else if (msgType === 'listResponseMessage') {
-      text = msgData.listResponseMessageData?.title || '';
+      text = msgData.buttonsResponseMessageData?.selectedButtonId ||
+             msgData.buttonsResponseMessageData?.selectedButtonBody || '';
     } else if (msgType === 'templateButtonReplyMessage') {
       text = msgData.templateButtonReplyMessageData?.selectedDisplayText || '';
     }
 
     if (!text) {
-      console.log('⚠️ No text found, msgType:', msgType);
+      console.log('⚠️ No text, msgType:', msgType, JSON.stringify(msgData).slice(0, 200));
       return;
     }
 
@@ -381,5 +393,4 @@ app.post('/webhook', async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`🚀 Bot running on port ${PORT}`);
-  console.log(`📡 Webhook URL set karo: https://YOUR-DOMAIN/webhook`);
 });
