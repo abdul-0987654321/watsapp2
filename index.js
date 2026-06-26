@@ -375,40 +375,69 @@ app.get('/health', (req, res) => {
 
 // Webhook Verification
 app.get('/webhook', (req, res) => {
-  // Whapi verification
   if (req.query.hub_challenge) {
     return res.send(req.query.hub_challenge);
   }
   res.sendStatus(200);
 });
 
-// Webhook Handler
+// ─── MAIN WEBBOOK HANDLER ──────────────────────────────
 app.post('/webhook', async (req, res) => {
   res.sendStatus(200);
 
   try {
     const data = req.body;
-    console.log('Webhook received:', JSON.stringify(data, null, 2));
+    console.log('📨 Webhook received');
 
-    // Whapi webhook format
-    const from = data.from || data.sender?.phone;
-    let text = data.text || data.message?.text || data.body;
-    
-    // Handle interactive responses
-    if (data.interactive) {
-      if (data.interactive.button_reply) {
-        text = data.interactive.button_reply.title;
-      } else if (data.interactive.list_reply) {
-        text = data.interactive.list_reply.id;
+    let from = null;
+    let text = null;
+
+    // 🔥 Parse Whapi messages array format
+    if (data.messages && Array.isArray(data.messages) && data.messages.length > 0) {
+      const message = data.messages[0];
+      
+      // Get sender
+      from = message.from || message.sender?.phone || message.chat_id?.split('@')[0];
+      
+      // Get text
+      if (message.text) {
+        text = message.text.body || message.text;
+      }
+      
+      // Handle interactive buttons
+      if (message.interactive) {
+        if (message.interactive.button_reply) {
+          text = message.interactive.button_reply.title;
+        } else if (message.interactive.list_reply) {
+          text = message.interactive.list_reply.id;
+        }
+      }
+      
+      // Fallback
+      if (!text) {
+        text = message.body || message.text || '';
       }
     }
 
+    // Direct format fallback (if webhook sends directly)
+    if (!from) {
+      from = data.from || data.sender?.phone || data.chat_id?.split('@')[0];
+    }
+    if (!text) {
+      text = data.text || data.message?.text || data.body || '';
+    }
+
+    console.log(`👤 From: ${from}`);
+    console.log(`💬 Text: ${text}`);
+
     if (from && text) {
       await handleMessage(from, text);
+    } else {
+      console.log('⚠️ No valid message to process');
     }
 
   } catch (err) {
-    console.error('Webhook Error:', err);
+    console.error('❌ Webhook Error:', err);
   }
 });
 
