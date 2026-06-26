@@ -1,10 +1,9 @@
 {
   "name": "whatsapp-food-bot",
   "version": "1.0.0",
-  "main": "bot.js",
+  "main": "watsapp/index.js",
   "scripts": {
-    "start": "node bot.js",
-    "dev": "nodemon bot.js"
+    "start": "node watsapp/index.js"
   },
   "dependencies": {
     "axios": "^1.6.0",
