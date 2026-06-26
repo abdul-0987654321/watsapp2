@@ -65,11 +65,10 @@ async function sendButtons(to, header, body, footer, buttons) {
   try {
     const chatId = `${to.replace(/\D/g, '')}@c.us`;
     const btns = buttons.map((b, i) => ({
-      type: 'reply',
       buttonId: String(i + 1),
       buttonText: b,
-    }));
-    await api.post(`/sendInteractiveButtons/${API_TOKEN}`, {
+    })); // ⚠️ type field hata diya
+    await api.post(`/sendInteractiveButtonsReply/${API_TOKEN}`, { // ⚠️ endpoint change
       chatId,
       header,
       body,
@@ -79,7 +78,6 @@ async function sendButtons(to, header, body, footer, buttons) {
     console.log(`✅ sendButtons → ${to}`);
   } catch (err) {
     console.error('sendButtons error — fallback text:', err.response?.data || err.message);
-    // Fallback: text
     const txt = `${header ? header + '\n' : ''}${body}\n\n` +
       buttons.map((b, i) => `${i + 1}. ${b}`).join('\n') +
       (footer ? `\n\n${footer}` : '');
@@ -93,8 +91,8 @@ async function sendListMessage(to, header, body, buttonText, sections) {
     const chatId = `${to.replace(/\D/g, '')}@c.us`;
     await api.post(`/sendListMessage/${API_TOKEN}`, {
       chatId,
-      header,
-      body,
+      message: body,     // ⚠️ "body" → "message"
+      title: header,     // ⚠️ "header" → "title"
       footer: '👇 Item chunein',
       buttonText,
       sections,
@@ -102,7 +100,6 @@ async function sendListMessage(to, header, body, buttonText, sections) {
     console.log(`✅ sendListMessage → ${to}`);
   } catch (err) {
     console.error('sendListMessage error — fallback text:', err.response?.data || err.message);
-    // Fallback: text menu
     await sendText(to,
       `${header}\n\n${body}\n\n` +
       MENU.map(m => `*${m.id}.* ${m.name} — *Rs.${m.price}*${m.desc ? '\n    _' + m.desc + '_' : ''}`).join('\n') +
