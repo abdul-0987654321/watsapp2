@@ -5,7 +5,6 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 
-
 // ─── CONFIG ─────────────────────────────────────────────
 const WHAPI_TOKEN = 'sRfxCOYrER4XYRFoVJ5boPNCZAo34v4A';
 const WHAPI_URL = 'https://gate.whapi.cloud/';
@@ -63,12 +62,12 @@ async function sendText(to, message) {
   try {
     const response = await api.post('/messages/text', {
       to: to,
-      text: message
+      body: message
     });
-    console.log('Message sent:', response.data);
+    console.log('✅ Message sent to:', to);
     return response.data;
   } catch (err) {
-    console.error('Send Text Error:', err.response?.data || err.message);
+    console.error('❌ Send Text Error:', err.response?.data || err.message);
   }
 }
 
@@ -78,33 +77,23 @@ async function sendButtons(to, title, buttons) {
     const response = await api.post('/messages/interactive', {
       to: to,
       type: 'button',
-      interactive: {
-        header: {
-          type: 'text',
-          text: '📱 Food Bot'
-        },
-        body: {
-          text: title
-        },
-        footer: {
-          text: 'Select an option'
-        },
-        action: {
-          buttons: buttons.map((btn, index) => ({
-            type: 'reply',
-            reply: {
-              id: `btn_${index}`,
-              title: btn
-            }
-          }))
-        }
+      body: {
+        text: title
+      },
+      action: {
+        buttons: buttons.map((btn, index) => ({
+          type: 'reply',
+          reply: {
+            id: `btn_${index}`,
+            title: btn
+          }
+        }))
       }
     });
-    console.log('Buttons sent:', response.data);
+    console.log('✅ Buttons sent to:', to);
     return response.data;
   } catch (err) {
-    console.error('Send Buttons Error:', err.response?.data || err.message);
-    // Fallback to text
+    console.error('❌ Send Buttons Error:', err.response?.data || err.message);
     await sendText(to, `${title}\n\n${buttons.map((b, i) => `${i+1}. ${b}`).join('\n')}`);
   }
 }
@@ -121,52 +110,22 @@ async function sendList(to, title, body, buttonText, items) {
     const response = await api.post('/messages/interactive', {
       to: to,
       type: 'list',
-      interactive: {
-        header: {
-          type: 'text',
-          text: '🍽 Menu'
-        },
-        body: {
-          text: body || 'Select items from menu'
-        },
-        footer: {
-          text: 'Tap to select'
-        },
-        action: {
-          button: buttonText || '📋 View Menu',
-          sections: [{
-            title: 'Items',
-            rows: rows
-          }]
-        }
+      body: {
+        text: body || 'Select items from menu'
+      },
+      action: {
+        button: buttonText || '📋 View Menu',
+        sections: [{
+          title: '🍽 Menu Items',
+          rows: rows
+        }]
       }
     });
-    console.log('List sent:', response.data);
+    console.log('✅ List sent to:', to);
     return response.data;
   } catch (err) {
-    console.error('Send List Error:', err.response?.data || err.message);
-    // Fallback to text
+    console.error('❌ Send List Error:', err.response?.data || err.message);
     await sendText(to, items.map(i => `${i.id}. ${i.name} - Rs.${i.price}`).join('\n'));
-  }
-}
-
-// ─── SEND TEMPLATE MESSAGE ──────────────────────────────
-async function sendTemplate(to, templateName, params = []) {
-  try {
-    const response = await api.post('/messages/template', {
-      to: to,
-      template: {
-        name: templateName,
-        language: 'en',
-        components: params.map(p => ({
-          type: 'body',
-          text: p
-        }))
-      }
-    });
-    return response.data;
-  } catch (err) {
-    console.error('Send Template Error:', err.response?.data || err.message);
   }
 }
 
@@ -206,15 +165,10 @@ async function processOrder(from, session) {
   };
 
   await saveOrder(order);
-  
-  // Customer confirmation
   await sendText(from, `🎉 Order Confirmed!\nID: ${order.id}\nTotal: Rs.${total}`);
-  
-  // Owner notification
   await sendText(OWNER_NUMBER,
     `📦 NEW ORDER\n${order.id}\n${order.name}\n${order.phone}\n${order.address}\n\n${text}\nTotal: Rs.${total}`
   );
-  
   resetSession(from);
 }
 
@@ -223,7 +177,7 @@ async function handleMessage(from, text) {
   const session = getSession(from);
   const msg = text.toLowerCase().trim();
 
-  console.log(`Message from ${from}: ${text}`);
+  console.log(`📩 Message from ${from}: ${text}`);
 
   // Health check
   if (msg === 'ping') {
@@ -345,8 +299,7 @@ async function handleMessage(from, text) {
     return sendText(from, "❌ Order cancelled. Type 'menu' to start again.");
   }
 
-  // Default response
-  await sendText(from, "❓ I didn't understand that. Type 'menu' to start or 'help' for commands.");
+  await sendText(from, "❓ Type 'menu' to start or 'help' for commands.");
 }
 
 // ─── APP ────────────────────────────────────────────────
@@ -381,7 +334,7 @@ app.get('/webhook', (req, res) => {
   res.sendStatus(200);
 });
 
-// ─── MAIN WEBBOOK HANDLER ──────────────────────────────
+// Webhook Handler
 app.post('/webhook', async (req, res) => {
   res.sendStatus(200);
 
@@ -392,19 +345,16 @@ app.post('/webhook', async (req, res) => {
     let from = null;
     let text = null;
 
-    // 🔥 Parse Whapi messages array format
+    // Parse Whapi messages array
     if (data.messages && Array.isArray(data.messages) && data.messages.length > 0) {
       const message = data.messages[0];
       
-      // Get sender
       from = message.from || message.sender?.phone || message.chat_id?.split('@')[0];
       
-      // Get text
       if (message.text) {
         text = message.text.body || message.text;
       }
       
-      // Handle interactive buttons
       if (message.interactive) {
         if (message.interactive.button_reply) {
           text = message.interactive.button_reply.title;
@@ -413,13 +363,12 @@ app.post('/webhook', async (req, res) => {
         }
       }
       
-      // Fallback
       if (!text) {
         text = message.body || message.text || '';
       }
     }
 
-    // Direct format fallback (if webhook sends directly)
+    // Fallback
     if (!from) {
       from = data.from || data.sender?.phone || data.chat_id?.split('@')[0];
     }
